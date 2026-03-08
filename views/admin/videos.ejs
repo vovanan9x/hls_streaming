@@ -1,0 +1,196 @@
+<%- include('../partials/header') %>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Danh sách Video (<%= videos.length %>)</span>
+            <a href="/admin/upload" class="btn btn-primary">📤 Upload mới</a>
+        </div>
+
+        <% if (videos.length===0) { %>
+            <div class="empty-state">
+                <div class="empty-state-icon">🎞️</div>
+                <div class="empty-state-text">Chưa có video nào</div>
+                <div class="empty-state-hint">Bắt đầu bằng cách upload video đầu tiên</div>
+            </div>
+            <% } else { %>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Thumb</th>
+                                <th>Tiêu đề</th>
+                                <th>Server</th>
+                                <th>Trạng thái</th>
+                                <th>👁️ Đang xem</th>
+                                <th>Ngày tạo</th>
+                                <th>Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% videos.forEach(function(v) { %>
+                                <tr>
+                                    <td class="td-thumb">
+                                        <% if (v.thumbnail) { %>
+                                            <img src="/uploads/thumbnails/<%= v.thumbnail %>" alt="thumb">
+                                            <% } else { %>
+                                                <div
+                                                    style="width:72px;height:42px;background:var(--bg-input);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;">
+                                                    🎬</div>
+                                                <% } %>
+                                    </td>
+                                    <td class="td-title">
+                                        <%= v.title %>
+                                            <small>ID: <%= v.id %> · Sort: <%= v.sort_order %></small>
+                                            <% if (v.qualities) { try { var qs=JSON.parse(v.qualities); } catch(e){ var
+                                                qs=[]; } qs.forEach(function(q){ %><span
+                                                    style="display:inline-block;font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(139,92,246,0.15);color:var(--accent);margin:2px 1px;font-weight:600">
+                                                    <%= q %>
+                                                </span>
+                                                <% }); } %>
+                                    </td>
+                                    <td>
+                                        <% if (v.server_label) { %>
+                                            <span style="color:var(--text-secondary)">
+                                                <%= v.server_label %>
+                                            </span>
+                                            <% } else { %>
+                                                <span style="color:var(--text-muted)">Local</span>
+                                                <% } %>
+                                    </td>
+                                    <td>
+                                        <% if (v.status==='ready' ) { %>
+                                            <span class="badge badge-ready" id="status-<%= v.id %>">READY</span>
+                                            <% } else if (v.status==='processing' ) { %>
+                                                <span class="badge badge-processing" id="status-<%= v.id %>">PROCESSING
+                                                    (<%= v.progress || 0 %>%)</span>
+                                                <% } else if (v.status==='uploading' ) { %>
+                                                    <span class="badge badge-processing" id="status-<%= v.id %>"
+                                                        style="background:rgba(59,130,246,0.15);color:#60a5fa;">⬆️
+                                                        UPLOADING...</span>
+                                                    <% } else if (v.status==='error' ) { %>
+                                                        <span class="badge badge-error"
+                                                            id="status-<%= v.id %>">LỖI</span>
+                                                        <% } %>
+                                    </td>
+                                    <td id="viewers-<%= v.id %>"
+                                        style="text-align:center;font-size:13px;color:var(--text-muted);">
+                                        <span style="display:inline-flex;align-items:center;gap:4px;">
+                                            <span style="font-size:16px;">👁️</span>
+                                            <span class="viewer-count">0</span>
+                                        </span>
+                                    </td>
+                                    <td style="color:var(--text-muted);font-size:13px;white-space:nowrap">
+                                        <%= v.created_at %>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <% if (typeof currentUser !=='undefined' && currentUser &&
+                                                currentUser.role==='administrator' ) { %>
+                                                <form action="/admin/videos/<%= v.id %>/push-top" method="POST"
+                                                    style="margin:0;">
+                                                    <button type="submit" class="btn btn-ghost btn-sm"
+                                                        title="Đẩy lên đầu">⬆️</button>
+                                                </form>
+                                                <a href="/admin/videos/<%= v.id %>/edit" class="btn btn-ghost btn-sm"
+                                                    title="Sửa">✏️</a>
+                                                <form action="/admin/videos/<%= v.id %>/delete" method="POST"
+                                                    class="delete-form" data-name="<%= v.title %>" style="margin:0;">
+                                                    <button type="submit" class="btn btn-danger btn-sm"
+                                                        title="Xoá">🗑️</button>
+                                                </form>
+                                                <% } %>
+                                                    <% if (v.m3u8_url) { %>
+                                                        <button class="btn btn-ghost btn-sm copy-btn"
+                                                            data-url="<%= v.m3u8_url %>" title="Copy m3u8">📋</button>
+                                                        <% } %>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+                <% } %>
+    </div>
+
+    <script>
+        (function () {
+            var progressTimer = null;
+            var viewerTimer = null;
+
+            // ---- Progress Polling (2s) ----
+            function hasProcessing() {
+                return document.querySelector('.badge-processing') !== null;
+            }
+
+            function pollProgress() {
+                fetch('/admin/api/videos/progress')
+                    .then(function (r) { return r.json(); })
+                    .then(function (videos) {
+                        if (!videos || videos.length === 0) {
+                            if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+                            location.reload();
+                            return;
+                        }
+                        videos.forEach(function (v) {
+                            var el = document.getElementById('status-' + v.id);
+                            if (!el) return;
+                            if (v.status === 'uploading') {
+                                el.textContent = '⬆️ UPLOADING...';
+                            } else {
+                                var pct = Math.min(v.progress || 0, 100);
+                                el.textContent = 'PROCESSING (' + pct + '%)';
+                            }
+                        });
+                    })
+                    .catch(function () { });
+            }
+
+            if (hasProcessing()) {
+                progressTimer = setInterval(pollProgress, 2000);
+            }
+
+            // ---- Viewer Count Polling (5s) ----
+            function pollViewers() {
+                fetch('/admin/api/viewers')
+                    .then(function (r) { return r.json(); })
+                    .then(function (counts) {
+                        // Reset all to 0 first
+                        document.querySelectorAll('[id^="viewers-"]').forEach(function (cell) {
+                            cell.querySelector('.viewer-count').textContent = '0';
+                            cell.style.color = 'var(--text-muted)';
+                            cell.style.opacity = '0.5';
+                        });
+                        // Apply live counts
+                        Object.keys(counts).forEach(function (videoId) {
+                            var count = counts[videoId];
+                            var cell = document.getElementById('viewers-' + videoId);
+                            if (cell && count > 0) {
+                                cell.querySelector('.viewer-count').textContent = count;
+                                cell.style.color = '#34d399';
+                                cell.style.opacity = '1';
+                                cell.style.fontWeight = '600';
+                            }
+                        });
+                    })
+                    .catch(function () { });
+            }
+
+            // Run immediately + then every 5s
+            pollViewers();
+            viewerTimer = setInterval(pollViewers, 5000);
+
+            // ---- Copy m3u8 URL ----
+            document.querySelectorAll('.copy-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var url = btn.getAttribute('data-url');
+                    navigator.clipboard.writeText(url).then(function () {
+                        btn.textContent = '✅';
+                        setTimeout(function () { btn.textContent = '📋'; }, 1500);
+                    });
+                });
+            });
+        })();
+    </script>
+
+    <%- include('../partials/footer') %>

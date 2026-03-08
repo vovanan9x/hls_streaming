@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> — HLS Streaming Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/css/style.css">
+</head>
+<body>
+  <div class="app-wrapper">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <span class="logo-icon">🎬</span>
+          <span class="logo-text">HLS Stream</span>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="/admin/upload" class="nav-item<%= title === 'Upload Video' ? ' active' : '' %>">
+          <span class="nav-icon">📤</span>
+          <span>Upload Video</span>
+        </a>
+        <a href="/admin/videos" class="nav-item<%= title === 'Quản lí Video' ? ' active' : '' %>">
+          <span class="nav-icon">🎞️</span>
+          <span>Quản lí Video</span>
+        </a>
+        <a href="/admin/servers" class="nav-item<%= title === 'Quản lí Server' ? ' active' : '' %>">
+          <span class="nav-icon">🖥️</span>
+          <span>Quản lí Server</span>
+        </a>
+        <div class="nav-divider"></div>
+        <a href="/play" class="nav-item" target="_blank">
+          <span class="nav-icon">▶️</span>
+          <span>Player Demo</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="version">v1.0.0</span>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <header class="content-header">
+        <h1><%= title %></h1>
+      </header>
+      <div class="content-body">
+        <%- body %>
+      </div>
+    </main>
+  </div>
+
+  <script src="/public/js/admin.js"></script>
+</body>
+</html>

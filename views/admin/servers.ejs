@@ -1,0 +1,79 @@
+<%- include('../partials/header') %>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Danh sách Server (<%= servers.length %>)</span>
+            <a href="/admin/servers/add" class="btn btn-primary">➕ Thêm Server</a>
+        </div>
+
+        <% if (servers.length===0) { %>
+            <div class="empty-state">
+                <div class="empty-state-icon">🖥️</div>
+                <div class="empty-state-text">Chưa có server nào</div>
+                <div class="empty-state-hint">Thêm server để bắt đầu upload video</div>
+            </div>
+            <% } else { %>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Label</th>
+                                <th>IP : Port</th>
+                                <th>Username</th>
+                                <th>Storage Path</th>
+                                <th>Trạng thái</th>
+                                <th>Kiểm tra lần cuối</th>
+                                <th>Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% servers.forEach(function(s) { %>
+                                <tr data-server-id="<%= s.id %>" data-server-status>
+                                    <td style="font-weight:500">
+                                        <%= s.label %>
+                                    </td>
+                                    <td style="font-family:monospace;font-size:13px;color:var(--text-secondary)">
+                                        <%= s.ip %>:<%= s.port %>
+                                    </td>
+                                    <td style="color:var(--text-secondary)">
+                                        <%= s.username %>
+                                    </td>
+                                    <td style="font-family:monospace;font-size:12px;color:var(--text-muted)">
+                                        <%= s.storage_path %>
+                                    </td>
+                                    <td>
+                                        <% if (s.status==='live' ) { %>
+                                            <span class="badge badge-live status-badge">LIVE</span>
+                                            <% } else if (s.status==='die' ) { %>
+                                                <span class="badge badge-die status-badge">DIE</span>
+                                                <% } else { %>
+                                                    <span class="badge badge-unknown status-badge">UNKNOWN</span>
+                                                    <% } %>
+                                    </td>
+                                    <td class="last-checked"
+                                        style="color:var(--text-muted);font-size:13px;white-space:nowrap">
+                                        <%= s.last_checked || 'Chưa kiểm tra' %>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <a href="/admin/servers/<%= s.id %>/edit" class="btn btn-ghost btn-sm"
+                                                title="Sửa">✏️</a>
+                                            <form action="/admin/servers/<%= s.id %>/delete" method="POST"
+                                                class="delete-form" data-name="<%= s.label %>" style="margin:0;">
+                                                <button type="submit" class="btn btn-danger btn-sm"
+                                                    title="Xoá">🗑️</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+                <% } %>
+    </div>
+    <p style="color:var(--text-muted);font-size:12px;margin-top:12px;">
+        ⏱️ Trạng thái server được kiểm tra tự động mỗi 1 phút. Trang tự cập nhật mỗi 30 giây.
+    </p>
+
+    <%- include('../partials/footer') %>

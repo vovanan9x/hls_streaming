@@ -1,0 +1,110 @@
+<%- include('../partials/header') %>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+        <div class="card" style="text-align:center;padding:24px">
+            <div style="font-size:36px;margin-bottom:8px">👁️</div>
+            <div style="font-size:28px;font-weight:700;color:var(--accent)">
+                <%= totalViews %>
+            </div>
+            <div style="color:var(--text-muted);font-size:13px;margin-top:4px">Tổng lượt xem</div>
+        </div>
+        <div class="card" style="text-align:center;padding:24px">
+            <div style="font-size:36px;margin-bottom:8px">📅</div>
+            <div style="font-size:28px;font-weight:700;color:var(--accent)">
+                <%= dailyViews.reduce((s,d)=>s+d.views,0) %>
+            </div>
+            <div style="color:var(--text-muted);font-size:13px;margin-top:4px">Lượt xem 7 ngày qua</div>
+        </div>
+        <div class="card" style="text-align:center;padding:24px">
+            <div style="font-size:36px;margin-bottom:8px">🏆</div>
+            <div style="font-size:28px;font-weight:700;color:var(--accent)">
+                <%= topVideos[0] ? topVideos[0].total_views : 0 %>
+            </div>
+            <div style="color:var(--text-muted);font-size:13px;margin-top:4px">Video hot nhất</div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-bottom:24px">
+        <div class="card-title">📈 Lượt xem 7 ngày qua</div>
+        <div style="margin-top:16px;height:200px;position:relative">
+            <canvas id="dailyChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">🏆 Top 10 Video được xem nhiều nhất</div>
+        <div style="margin-top:16px">
+            <% if (topVideos.length===0) { %>
+                <p style="color:var(--text-muted);text-align:center;padding:20px">Chưa có dữ liệu thống kê.</p>
+                <% } else { %>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Video</th>
+                                <th style="text-align:right">Lượt xem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% topVideos.forEach(function(v, i) { %>
+                                <tr>
+                                    <td style="color:var(--text-muted);width:40px">
+                                        <%= i+1 %>
+                                    </td>
+                                    <td><a href="/admin/videos" style="color:var(--text-primary);text-decoration:none">
+                                            <%= v.title %>
+                                        </a></td>
+                                    <td style="text-align:right">
+                                        <span style="color:var(--accent);font-weight:600">
+                                            <%= v.total_views %>
+                                        </span>
+                                        <div
+                                            style="height:4px;background:rgba(139,92,246,0.15);border-radius:2px;margin-top:4px">
+                                            <div
+                                                style="height:4px;background:var(--accent);border-radius:2px;width:<%= topVideos[0].total_views > 0 ? Math.round(v.total_views/topVideos[0].total_views*100) : 0 %>%">
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <% }) %>
+                        </tbody>
+                    </table>
+                    <% } %>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        const labels = <% - JSON.stringify(dailyViews.map(d => d.day)) %>;
+        const data = <% - JSON.stringify(dailyViews.map(d => d.views)) %>;
+        // Fill missing days
+        const allDays = [], allData = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(); d.setDate(d.getDate() - i);
+            const key = d.toISOString().slice(0, 10);
+            allDays.push(key.slice(5)); // MM-DD
+            const found = dailyViews.find(v => v.day === key);
+            allData.push(found ? found.views : 0);
+        }
+        new Chart(document.getElementById('dailyChart'), {
+            type: 'bar',
+            data: {
+                labels: allDays,
+                datasets: [{
+                    label: 'Lượt xem', data: allData,
+                    backgroundColor: 'rgba(139,92,246,0.3)', borderColor: '#8b5cf6',
+                    borderWidth: 2, borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { color: '#94a3b8', precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+                }
+            }
+        });
+    </script>
+
+    <%- include('../partials/footer') %>

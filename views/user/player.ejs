@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>
+        <%= title %> — HLS Player
+    </title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, sans-serif;
+        }
+
+        .player-page {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+
+        .player-container {
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            max-height: 100%;
+            position: relative;
+        }
+
+        #player {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .player-error {
+            color: #666;
+            text-align: center;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        .player-error-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+
+        .player-error h2 {
+            font-size: 20px;
+            color: #999;
+            margin-bottom: 8px;
+        }
+
+        .player-error p {
+            font-size: 14px;
+            color: #555;
+            max-width: 500px;
+        }
+
+        /* Responsive: Tablet */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .player-container {
+                width: 100%;
+                height: 100%;
+            }
+        }
+
+        /* Responsive: PC — letterbox with max aspect ratio */
+        @media (min-width: 1025px) {
+            .player-page {
+                padding: 0;
+            }
+
+            .player-container {
+                width: 100%;
+                height: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="player-page">
+        <% if (error) { %>
+            <div class="player-error">
+                <div class="player-error-icon">⚠️</div>
+                <h2>Không thể phát video</h2>
+                <p>
+                    <%= error %>
+                </p>
+            </div>
+            <% } else { %>
+                <div class="player-container">
+                    <div id="player"></div>
+                </div>
+                <% } %>
+    </div>
+
+    <% if (m3u8Url) { %>
+        <script src="https://cdn.jwplayer.com/libraries/IDzF9Zmk.js"></script>
+        <script>
+            (function () {
+                var playerInstance = jwplayer("player");
+                playerInstance.setup({
+                    file: "<%= m3u8Url %>",
+                    type: "hls",
+                    width: "100%",
+                    height: "100%",
+                    aspectratio: undefined,
+                    stretching: "uniform",
+                    autostart: true,
+                    mute: false,
+                    controls: true,
+                    primary: "html5",
+                    hlshtml: true,
+                    skin: {
+                        name: "suspended-noir"
+                    },
+                    captions: {
+                        color: "#fff",
+                        fontSize: 16
+                    }
+                });
+
+                playerInstance.on('ready', function () {
+                    console.log('[Player] Ready');
+                    <% if (videoId) { %>
+                    // Resume playback from last position
+                    var LS_POS = 'hls_pos_<%= videoId %>';
+                        var saved = parseFloat(localStorage.getItem(LS_POS) || '0');
+                        if (saved > 5) { playerInstance.seek(saved); }
+
+                        // Save position every 5s
+                        setInterval(function () {
+                            var pos = playerInstance.getPosition();
+                            if (pos > 0) localStorage.setItem(LS_POS, pos);
+                        }, 5000);
+
+                        // Clear saved position on video complete
+                        playerInstance.on('complete', function () { localStorage.removeItem(LS_POS); });
+                    <% } %>
+                });
+
+                playerInstance.on('error', function (e) {
+                    console.error('[Player] Error:', e);
+                    document.getElementById('player').innerHTML =
+                        '<div class="player-error">' +
+                        '<div class="player-error-icon">❌</div>' +
+                        '<h2>Lỗi phát video</h2>' +
+                        '<p>' + (e.message || 'Không thể tải nguồn video.') + '</p>' +
+                        '</div>';
+                });
+
+                // Keyboard shortcuts
+                document.addEventListener('keydown', function (e) {
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                    switch (e.key) {
+                        case ' ': case 'k':
+                            e.preventDefault();
+                            playerInstance.getState() === 'playing' ? playerInstance.pause() : playerInstance.play();
+                            break;
+                        case 'ArrowRight': e.preventDefault(); playerInstance.seek(playerInstance.getPosition() + 10); break;
+                        case 'ArrowLeft': e.preventDefault(); playerInstance.seek(Math.max(0, playerInstance.getPosition() - 10)); break;
+                        case 'f': case 'F': e.preventDefault(); playerInstance.setFullscreen(true); break;
+                        case 'm': case 'M': e.preventDefault(); playerInstance.setMute(!playerInstance.getMute()); break;
+                        case 'ArrowUp': e.preventDefault(); playerInstance.setVolume(Math.min(100, playerInstance.getVolume() + 10)); break;
+                        case 'ArrowDown': e.preventDefault(); playerInstance.setVolume(Math.max(0, playerInstance.getVolume() - 10)); break;
+                    }
+                });
+            })();
+        </script>
+
+        <% if (videoId) { %>
+            <script>
+                // Viewer ping — gửi mỗi 15 giây để đăng ký đang xem
+                (function () {
+                    var VIDEO_ID = '<%= videoId %>';
+                    var pingTimer = null;
+
+                    function ping() {
+                        fetch('/api/viewer/ping', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ videoId: VIDEO_ID })
+                        }).catch(function () { });
+                    }
+
+                    function startPing() {
+                        if (pingTimer) return;
+                        ping(); // immediate
+                        pingTimer = setInterval(ping, 15000);
+                    }
+
+                    function stopPing() {
+                        if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+                    }
+
+                    // Bắt đầu ping ngay khi trang load
+                    startPing();
+
+                    // Dừng khi tab bị ẩn, tiếp tục khi hiện lại
+                    document.addEventListener('visibilitychange', function () {
+                        if (document.hidden) stopPing(); else startPing();
+                    });
+
+                    // Dừng khi rời trang
+                    window.addEventListener('beforeunload', stopPing);
+                })();
+            </script>
+            <% } %>
+                <% } %>
+</body>
+
+</html>

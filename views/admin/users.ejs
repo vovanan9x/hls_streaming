@@ -1,0 +1,77 @@
+<%- include('../partials/header') %>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Danh sách Tài khoản (<%= users.length %>)</span>
+            <a href="/admin/users/add" class="btn btn-primary">➕ Thêm Tài khoản</a>
+        </div>
+
+        <% if (users.length===0) { %>
+            <div class="empty-state">
+                <div class="empty-state-icon">👤</div>
+                <div class="empty-state-text">Chưa có tài khoản nào</div>
+            </div>
+            <% } else { %>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Tên hiển thị</th>
+                                <th>Vai trò</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày tạo</th>
+                                <th>Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% users.forEach(function(u) { %>
+                                <tr>
+                                    <td style="color:var(--text-muted)">#<%= u.id %>
+                                    </td>
+                                    <td style="font-weight:500">
+                                        <%= u.username %>
+                                    </td>
+                                    <td style="color:var(--text-secondary)">
+                                        <%= u.display_name || '—' %>
+                                    </td>
+                                    <td>
+                                        <% if (u.role==='administrator' ) { %>
+                                            <span class="badge badge-live">ADMIN</span>
+                                            <% } else { %>
+                                                <span class="badge badge-unknown">UPLOADER</span>
+                                                <% } %>
+                                    </td>
+                                    <td>
+                                        <% if (u.is_active) { %>
+                                            <span class="badge badge-ready">ACTIVE</span>
+                                            <% } else { %>
+                                                <span class="badge badge-die">DISABLED</span>
+                                                <% } %>
+                                    </td>
+                                    <td style="color:var(--text-muted);font-size:13px;white-space:nowrap">
+                                        <%= u.created_at %>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <a href="/admin/users/<%= u.id %>/edit" class="btn btn-ghost btn-sm"
+                                                title="Sửa">✏️</a>
+                                            <% if (u.id !==currentUser.id) { %>
+                                                <form action="/admin/users/<%= u.id %>/delete" method="POST"
+                                                    class="delete-form" data-name="<%= u.username %>" style="margin:0;">
+                                                    <button type="submit" class="btn btn-danger btn-sm"
+                                                        title="Xoá">🗑️</button>
+                                                </form>
+                                                <% } %>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+                <% } %>
+    </div>
+
+    <%- include('../partials/footer') %>

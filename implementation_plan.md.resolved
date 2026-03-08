@@ -1,0 +1,236 @@
+# HLS Video Streaming System
+
+Xây dựng hệ thống streaming video HLS hoàn chỉnh cho trang chiếu phim online, gồm trang Admin (upload, quản lí video, quản lí server) và trang User (iframe player với JWPlayer).
+
+## User Review Required
+
+> [!IMPORTANT]
+> **FFmpeg chưa được cài đặt** trên hệ thống. Sẽ dùng `ffmpeg-static` (npm package) để tự động tải FFmpeg binary — không cần cài thủ công.
+
+> [!IMPORTANT]
+> **JWPlayer cần license key**. Bản plan này sẽ dùng JWPlayer CDN free (self-hosted open-source bản 8.x). Nếu bạn có license key, cho tôi biết để cấu hình.
+
+> [!WARNING]
+> **Remote upload & SSH tới server**: Chức năng upload video lên remote server sẽ dùng SSH2. Bạn cần cung cấp thông tin server thật để test. Trong lần demo này, hệ thống sẽ lưu file ở local folder mô phỏng multi-server.
+
+## Tech Stack
+
+| Thành phần | Công nghệ |
+|---|---|
+| Backend | Express.js |
+| Database | SQLite3 (better-sqlite3) |
+| Template engine | EJS |
+| Video processing | FFmpeg (ffmpeg-static + fluent-ffmpeg) |
+| File upload | Multer |
+| Remote server | SSH2 |
+| Cron jobs | node-cron |
+| Player | JWPlayer 8.x (CDN) |
+
+## Project Structure
+
+```
+d:\nodejs\
+├── index.js                    # Entry point
+├── package.json
+├── database.js                 # DB init + helpers
+├── routes/
+│   ├── admin.js                # Admin routes
+│   └── user.js                 # User/iframe routes
+├── services/
+│   ├── ffmpeg.js               # HLS conversion
+│   ├── serverCheck.js          # Cron server health check
+│   └── upload.js               # Upload handling (local + remote)
+├── views/
+│   ├── layout.ejs              # Shared layout
+│   ├── admin/
+│   │   ├── upload.ejs          # Video upload page
+│   │   ├── videos.ejs          # Video list management
+│   │   ├── video-edit.ejs      # Video edit page
+│   │   ├── servers.ejs         # Server list management
+│   │   └── server-form.ejs     # Server add/edit page
+│   └── user/
+│       └── player.ejs          # iframe player page (JWPlayer)
+├── public/
+│   ├── css/
+│   │   └── style.css           # Dark theme styling
+│   └── js/
+│       └── admin.js            # Client-side JS
+├── uploads/                    # Temp upload storage
+│   ├── videos/
+│   └── thumbnails/
+└── storage/                    # HLS output (per-server simulation)
+```
+
+## Proposed Changes
+
+### Database Schema
+
+#### [NEW] [database.js](file:///d:/nodejs/database.js)
+
+Tạo SQLite database với 2 bảng:
+
+```sql
+-- Bảng videos
+CREATE TABLE videos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  description TEXT,
+  thumbnail TEXT,
+  video_file TEXT,
+  m3u8_url TEXT,
+  iframe_url TEXT,
+  server_id INTEGER,
+  status TEXT DEFAULT 'processing', -- processing | ready | error
+  sort_order INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (server_id) REFERENCES servers(id)
+);
+
+-- Bảng servers
+CREATE TABLE servers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT NOT NULL,
+  ip TEXT NOT NULL,
+  port INTEGER DEFAULT 22,
+  username TEXT NOT NULL,
+  password TEXT,
+  storage_path TEXT DEFAULT '/var/hls-storage',
+  is_active INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'unknown', -- live | die | unknown
+  last_checked DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+---
+
+### Backend Core
+
+#### [MODIFY] [index.js](file:///d:/nodejs/index.js)
+
+Chuyển từ HTTP server thuần sang Express app với: EJS template, static files, router admin/user, multer config, cron khởi động.
+
+#### [NEW] [services/ffmpeg.js](file:///d:/nodejs/services/ffmpeg.js)
+
+Module chuyển đổi video (mp4/mkv) → HLS (m3u8 + ts segments) bằng fluent-ffmpeg + ffmpeg-static. Auto-generate thumbnail nếu user không upload.
+
+#### [NEW] [services/upload.js](file:///d:/nodejs/services/upload.js)
+
+Xử lý upload logic:
+- **Local upload**: Multer nhận file từ form → lưu vào `uploads/videos/`
+- **Remote upload**: Nhận URL → download file về server → lưu vào `uploads/videos/`
+- Sau khi upload xong → gọi FFmpeg convert → chuyển HLS output vào `storage/{server_id}/`
+
+#### [NEW] [services/serverCheck.js](file:///d:/nodejs/services/serverCheck.js)
+
+Cron job chạy mỗi 1 phút:
+- Lấy danh sách servers từ DB
+- SSH2 connect test tới mỗi server
+- Cập nhật trạng thái `live` hoặc `die` vào DB
+- Đối với local mode: sẽ ping/check folder tồn tại
+
+---
+
+### Admin Routes
+
+#### [NEW] [routes/admin.js](file:///d:/nodejs/routes/admin.js)
+
+| Route | Method | Chức năng |
+|---|---|---|
+| `/admin/upload` | GET | Trang upload video |
+| `/admin/upload` | POST | Xử lý upload video |
+| `/admin/videos` | GET | Danh sách video (sort theo thời gian) |
+| `/admin/videos/:id/edit` | GET | Trang sửa video |
+| `/admin/videos/:id/edit` | POST | Cập nhật video |
+| `/admin/videos/:id/delete` | POST | Xoá video (DB + files) |
+| `/admin/videos/:id/push-top` | POST | Đẩy video lên đầu |
+| `/admin/servers` | GET | Danh sách server |
+| `/admin/servers/add` | GET | Trang thêm server |
+| `/admin/servers/add` | POST | Lưu server mới |
+| `/admin/servers/:id/edit` | GET | Trang sửa server |
+| `/admin/servers/:id/edit` | POST | Cập nhật server |
+| `/admin/servers/:id/delete` | POST | Xoá server |
+
+---
+
+### User Routes
+
+#### [NEW] [routes/user.js](file:///d:/nodejs/routes/user.js)
+
+| Route | Method | Chức năng |
+|---|---|---|
+| `/embed/:videoId` | GET | Player page — lấy m3u8 URL từ DB |
+| `/play` | GET | Player page — nhận m3u8 URL qua query param `?url=` |
+
+---
+
+### Frontend — Admin
+
+#### [NEW] [views/layout.ejs](file:///d:/nodejs/views/layout.ejs)
+
+Layout chung: dark theme, sidebar nav (Upload, Videos, Servers), responsive.
+
+#### [NEW] [views/admin/upload.ejs](file:///d:/nodejs/views/admin/upload.ejs)
+
+- Form input: tiêu đề, mô tả
+- Thumbnail: upload file (png/jpg) hoặc tự động tạo từ video
+- **2 tabs**: Local upload (drag & drop / browse) | Remote upload (nhập URL)
+- **Select server**: dropdown chọn server đích
+- Progress bar khi upload
+
+#### [NEW] [views/admin/videos.ejs](file:///d:/nodejs/views/admin/videos.ejs)
+
+Bảng danh sách video: thumbnail nhỏ, tiêu đề, trạng thái, ngày tạo, nút actions (đẩy lên đầu / sửa / xoá).
+
+#### [NEW] [views/admin/video-edit.ejs](file:///d:/nodejs/views/admin/video-edit.ejs)
+
+Form sửa: tiêu đề, mô tả, link iframe, link m3u8, thời gian cập nhật.
+
+#### [NEW] [views/admin/servers.ejs](file:///d:/nodejs/views/admin/servers.ejs)
+
+Bảng danh sách server: label, IP:port, trạng thái (live/die badge), last checked, nút actions.
+
+#### [NEW] [views/admin/server-form.ejs](file:///d:/nodejs/views/admin/server-form.ejs)
+
+Form thêm/sửa server: label, IP, port, username, password, storage path.
+
+---
+
+### Frontend — User
+
+#### [NEW] [views/user/player.ejs](file:///d:/nodejs/views/user/player.ejs)
+
+- JWPlayer 8.x (CDN) với m3u8 source
+- Responsive: 16:9 ratio, full-width trên mobile, max-width trên PC
+- Dark background, tối ưu cho trải nghiệm xem phim
+
+---
+
+### Static Assets
+
+#### [NEW] [public/css/style.css](file:///d:/nodejs/public/css/style.css)
+
+Dark theme cinema-style: gradient header, card-based layout, status badges (live/die), responsive grid, form styling, upload dropzone, progress bar.
+
+#### [NEW] [public/js/admin.js](file:///d:/nodejs/public/js/admin.js)
+
+Client-side: tab switching (local/remote), drag & drop upload, upload progress via fetch, confirm dialog trước khi xoá, AJAX status refresh.
+
+## Verification Plan
+
+### Automated Tests
+
+Chạy server và kiểm tra các endpoint hoạt động:
+```bash
+npm run dev
+```
+
+### Manual Verification (qua Browser)
+
+1. **Admin Upload**: Mở `http://localhost:3000/admin/upload`, upload 1 video mp4 nhỏ + thumbnail → kiểm tra video xuất hiện trong danh sách
+2. **Video Management**: Mở `/admin/videos` → test sửa, xoá, đẩy lên đầu
+3. **Server Management**: Mở `/admin/servers` → thêm server → kiểm tra trạng thái cron
+4. **Iframe Player**: Mở `/play?url=<m3u8_url>` → kiểm tra JWPlayer phát video
+5. **Responsive**: Resize trình duyệt hoặc DevTools responsive mode → kiểm tra layout PC/mobile/tablet

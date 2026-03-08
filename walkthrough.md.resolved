@@ -1,0 +1,86 @@
+# HLS Streaming System — Walkthrough
+
+## Tổng quan
+
+Đã xây dựng hoàn chỉnh hệ thống HLS video streaming gồm **Admin Dashboard** và **User Player**.
+
+## Screenshots
+
+````carousel
+![Trang Quản lí Video - Giao diện dark theme với sidebar và empty state](C:/Users/an/.gemini/antigravity/brain/8d984146-4557-40ce-9e1d-d6d6ab052d60/admin_videos_page_1772768962943.png)
+<!-- slide -->
+![Trang Upload Video - Form upload với đầy đủ tabs local/remote, thumbnail, server select](C:/Users/an/.gemini/antigravity/brain/8d984146-4557-40ce-9e1d-d6d6ab052d60/admin_upload_page_1772768980808.png)
+<!-- slide -->
+![Trang Quản lí Server - Danh sách server với trạng thái live/die](C:/Users/an/.gemini/antigravity/brain/8d984146-4557-40ce-9e1d-d6d6ab052d60/admin_servers_page_1772768993616.png)
+<!-- slide -->
+![Trang Player - JWPlayer yêu cầu URL m3u8](C:/Users/an/.gemini/antigravity/brain/8d984146-4557-40ce-9e1d-d6d6ab052d60/player_page_no_url_1772769005390.png)
+````
+
+## Cấu trúc dự án
+
+```
+d:\nodejs\
+├── index.js                    # Express server + middleware
+├── database.js                 # SQLite schema (videos, servers)
+├── routes/
+│   ├── admin.js                # Admin CRUD routes
+│   └── user.js                 # Player embed routes
+├── services/
+│   ├── ffmpeg.js               # HLS conversion (mp4/mkv → m3u8)
+│   ├── serverCheck.js          # Cron health check (1 min)
+│   └── upload.js               # Remote download handler
+├── views/
+│   ├── partials/               # Header + footer EJS partials
+│   ├── admin/                  # 5 admin pages (upload, videos, video-edit, servers, server-form)
+│   └── user/
+│       └── player.ejs          # JWPlayer iframe (responsive)
+├── public/css/style.css        # Dark black theme
+└── public/js/admin.js          # Client-side interactions
+```
+
+## Chức năng đã triển khai
+
+| Chức năng | Trạng thái |
+|---|---|
+| Upload video (local + remote URL) | ✅ |
+| Tự động tạo thumbnail từ video | ✅ |
+| Upload thumbnail thủ công (PNG/JPG) | ✅ |
+| FFmpeg convert MP4/MKV → HLS (m3u8) | ✅ |
+| Chọn server lưu trữ khi upload | ✅ |
+| Quản lí video: đẩy lên đầu, sửa, xoá | ✅ |
+| Xoá video: DB + files trên server | ✅ |
+| CRUD server (label, IP, port, user/pass) | ✅ |
+| Cron check server live/die mỗi 1 phút | ✅ |
+| Auto-refresh trạng thái server (30s) | ✅ |
+| JWPlayer iframe player (responsive) | ✅ |
+| Hệ thống Đăng nhập / Session (bcrypt) | ✅ |
+| Phân quyền: Administrator và Uploader | ✅ |
+| Quản lí Tài khoản (thêm/sửa/xoá/phân quyền) | ✅ |
+| Dark black theme UI | ✅ |
+
+## Phân quyền (RBAC)
+
+Hệ thống có 2 cấp độ tài khoản:
+1. **Administrator (Admin)**: Toàn quyền truy cập. Có thể quản lí Server, quản lí Tài khoản người dùng khác, và xem tất cả video.
+2. **Uploader**: Chỉ có quyền Upload video, xem danh sách video CỦA MÌNH upload, và lấy link m3u8/iframe. Không thể xem hay sửa server/tài khoản.
+
+**Tài khoản mặc định (Administrator):**
+- Username: `admin`
+- Password: `admin123`
+
+## Cách sử dụng
+
+```bash
+cd d:\nodejs
+npm run dev          # Chạy với nodemon
+# hoặc
+npm start            # Chạy bình thường
+```
+
+**URLs:**
+- Đăng nhập: `http://localhost:3000/auth/login`
+- Admin Videos: `http://localhost:3000/admin/videos`
+- Quản lí Tài khoản: `http://localhost:3000/admin/users`
+- Admin Upload: `http://localhost:3000/admin/upload`
+- Admin Servers: `http://localhost:3000/admin/servers`
+- Player: `http://localhost:3000/play?url=<m3u8_url>` hoặc `http://localhost:3000/embed/<videoId>`
