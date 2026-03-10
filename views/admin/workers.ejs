@@ -1,0 +1,173 @@
+<%- include('../partials/header') %>
+
+    <% var toastMsg='' ; if (msg==='added' ) toastMsg='✅ Đã thêm worker.' ; else if (msg==='deleted' )
+        toastMsg='🗑️ Đã xoá worker.' ; else if (msg==='missing' ) toastMsg='⚠️ Vui lòng điền đầy đủ thông tin.' ; %>
+        <% if (toastMsg) { %>
+            <div id="page-toast"
+                style="position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;max-width:380px;box-shadow:0 4px 20px rgba(0,0,0,0.3);background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.3);color:#34d399;">
+                <%= toastMsg %>
+            </div>
+            <script>setTimeout(function () { var t = document.getElementById('page-toast'); if (t) { t.style.opacity = '0'; t.style.transition = 'opacity 0.4s'; setTimeout(function () { t.remove(); }, 400); } }, 3000);</script>
+            <% } %>
+
+                <!-- Thêm Worker -->
+                <div class="card" style="margin-bottom:20px;">
+                    <div class="card-title">➕ Thêm Encode Worker</div><br>
+                    <form action="/admin/workers/add" method="POST"
+                        style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;">
+                        <div class="form-group" style="margin:0">
+                            <label class="form-label">Label</label>
+                            <input type="text" name="label" class="form-input" placeholder="Worker-01 (AX41-NVMe #1)"
+                                required>
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label class="form-label">URL Worker</label>
+                            <input type="url" name="url" class="form-input" placeholder="http://65.21.x.x:4000"
+                                required>
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label class="form-label">Secret Token</label>
+                            <input type="text" name="token" class="form-input"
+                                placeholder="same-as-WORKER_TOKEN-in-.env" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="height:40px;">Thêm</button>
+                    </form>
+                    <small style="color:var(--text-muted);margin-top:8px;display:block;">
+                        ⚠️ Token phải khớp với <code>WORKER_TOKEN</code> trong file <code>.env</code> trên encode
+                        server.
+                        App URL của worker phải trỏ về app server:
+                        <code>APP_URL=http://&lt;app-server-ip&gt;:3000</code>
+                    </small>
+                </div>
+
+                <!-- Danh sách Workers -->
+                <div class="card">
+                    <div class="card-title">🔧 Encode Workers (<%= workers.length %>)</div><br>
+
+                    <% if (workers.length===0) { %>
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🔧</div>
+                            <div class="empty-state-text">Chưa có encode worker nào</div>
+                            <div class="empty-state-hint">Thêm worker ở trên để enable distributed encoding.<br>
+                                Nếu không có worker, hệ thống sẽ encode local trên app server.</div>
+                        </div>
+                        <% } else { %>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Label</th>
+                                            <th>URL</th>
+                                            <th>Kết nối</th>
+                                            <th>Trạng thái</th>
+                                            <th>Job hiện tại</th>
+                                            <th>Storage OK</th>
+                                            <th>Uptime</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <% workers.forEach(function(w, idx) { %>
+                                            <tr>
+                                                <td><strong style="color:var(--text-primary)">
+                                                        <%= w.label %>
+                                                    </strong></td>
+                                                <td style="font-size:12px;color:var(--text-muted);">
+                                                    <%= w.url %>
+                                                </td>
+                                                <td>
+                                                    <% if (w.reachable) { %>
+                                                        <span style="color:#34d399;font-weight:600;">✅ Online</span>
+                                                        <% } else { %>
+                                                            <span style="color:#f87171;font-weight:600;">❌
+                                                                Offline</span>
+                                                            <% } %>
+                                                </td>
+                                                <td>
+                                                    <% if (!w.reachable) { %>
+                                                        <span style="color:var(--text-muted)">—</span>
+                                                        <% } else if (w.busy) { %>
+                                                            <span class="badge badge-processing">⚙️ ĐANG ENCODE</span>
+                                                            <% } else { %>
+                                                                <span class="badge badge-ready">✅ RẢNH</span>
+                                                                <% } %>
+                                                </td>
+                                                <td style="font-size:13px;color:var(--text-secondary);">
+                                                    <% if (w.job && w.job.videoId) { %>
+                                                        Video ID: <strong>
+                                                            <%= w.job.videoId %>
+                                                        </strong>
+                                                        <% } else { %>
+                                                            <span style="color:var(--text-muted)">—</span>
+                                                            <% } %>
+                                                </td>
+                                                <td>
+                                                    <% if (!w.reachable) { %>
+                                                        <span style="color:var(--text-muted)">—</span>
+                                                        <% } else if (w.storageOk) { %>
+                                                            <span style="color:#34d399;">✅</span>
+                                                            <% } else { %>
+                                                                <span style="color:#f87171;"
+                                                                    title="Storage Box chưa mount?">❌ Chưa mount</span>
+                                                                <% } %>
+                                                </td>
+                                                <td style="font-size:12px;color:var(--text-muted);">
+                                                    <% if (w.uptime) { %>
+                                                        <%= Math.floor(w.uptime / 3600) %>h <%= Math.floor((w.uptime %
+                                                                3600) / 60) %>m
+                                                                <% } else { %>—<% } %>
+                                                </td>
+                                                <td>
+                                                    <form action="/admin/workers/<%= idx %>/delete" method="POST"
+                                                        style="margin:0;" onsubmit="return confirm('Xoá worker này?')">
+                                                        <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                            <% }); %>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <% } %>
+                </div>
+
+                <!-- Hướng dẫn setup -->
+                <div class="card" style="margin-top:20px;">
+                    <div class="card-title">📋 Hướng dẫn Deploy Worker</div>
+                    <div style="margin-top:12px;font-size:13px;color:var(--text-secondary);line-height:1.8;">
+                        <strong>1. Trên encode server (AX41-NVMe):</strong>
+                        <pre
+                            style="background:var(--bg-input);border-radius:6px;padding:14px;margin:8px 0;overflow-x:auto;font-size:12px;"><code># Cài FFmpeg + Node.js
+apt update && apt install -y ffmpeg nodejs npm
+
+# Copy thư mục /worker từ app lên encode server
+scp -r /opt/hls-app/worker root@&lt;WORKER_IP&gt;:/opt/hls-worker
+
+# Cài dependencies
+cd /opt/hls-worker && npm install
+
+# Mount Storage Box (cùng mount point với app server!)
+apt install -y sshfs
+mkdir -p /mnt/storagebox
+sshfs -o port=23 u123456@u123456.your-storagebox.de:/home /mnt/storagebox</code></pre>
+
+                        <strong>2. Tạo file <code>.env</code> trên encode server:</strong>
+                        <pre
+                            style="background:var(--bg-input);border-radius:6px;padding:14px;margin:8px 0;overflow-x:auto;font-size:12px;"><code>WORKER_PORT=4000
+WORKER_TOKEN=your-secret-token-here        # Điền vào form trên
+APP_URL=http://&lt;APP_SERVER_IP&gt;:3000        # URL app server để báo progress
+HLS_OUTPUT_DIR=/mnt/storagebox/hls
+UPLOAD_DIR=/mnt/storagebox/uploads</code></pre>
+
+                        <strong>3. Chạy worker với PM2:</strong>
+                        <pre
+                            style="background:var(--bg-input);border-radius:6px;padding:14px;margin:8px 0;overflow-x:auto;font-size:12px;"><code>cd /opt/hls-worker
+npm install -g pm2
+pm2 start server.js --name hls-worker
+pm2 save && pm2 startup</code></pre>
+
+                        <strong>4. Thêm worker ở form trên với URL: <code>http://&lt;WORKER_IP&gt;:4000</code></strong>
+                    </div>
+                </div>
+
+                <%- include('../partials/footer') %>

@@ -1,0 +1,645 @@
+<%- include('../partials/header') %>
+
+    <style>
+        .api-section {
+            margin-bottom: 32px;
+        }
+
+        .api-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+
+        .api-card h3 {
+            margin: 0 0 12px;
+            font-size: 16px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .method-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+        }
+
+        .method-get {
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(52, 211, 153, 0.3);
+        }
+
+        .method-post {
+            background: rgba(99, 102, 241, 0.15);
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .endpoint {
+            font-family: monospace;
+            font-size: 14px;
+            color: var(--accent);
+            background: rgba(139, 92, 246, 0.08);
+            padding: 8px 14px;
+            border-radius: 8px;
+            display: inline-block;
+            margin-bottom: 12px;
+            word-break: break-all;
+        }
+
+        .api-desc {
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.7;
+            margin-bottom: 14px;
+        }
+
+        .param-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .param-table th {
+            text-align: left;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .param-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--text-secondary);
+            vertical-align: top;
+        }
+
+        .param-table td:first-child {
+            font-family: monospace;
+            color: var(--accent);
+            white-space: nowrap;
+        }
+
+        .required-tag {
+            font-size: 9px;
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-weight: 700;
+            vertical-align: middle;
+            margin-left: 4px;
+        }
+
+        .optional-tag {
+            font-size: 9px;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-muted);
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-weight: 600;
+            vertical-align: middle;
+            margin-left: 4px;
+        }
+
+        pre.code-block {
+            background: #0d1117;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 13px;
+            color: #c9d1d9;
+            overflow-x: auto;
+            line-height: 1.6;
+            margin: 12px 0 0;
+            white-space: pre;
+        }
+
+        pre.code-block .comment {
+            color: #6e7681;
+        }
+
+        pre.code-block .string {
+            color: #a5d6ff;
+        }
+
+        pre.code-block .key {
+            color: #d2a8ff;
+        }
+
+        .token-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(139, 92, 246, 0.08);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-bottom: 20px;
+        }
+
+        .token-box code {
+            font-family: monospace;
+            font-size: 13px;
+            color: var(--accent);
+            word-break: break-all;
+            flex: 1;
+        }
+
+        .copy-btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .copy-btn:hover {
+            opacity: 0.85;
+        }
+
+        .try-it {
+            margin-top: 14px;
+        }
+
+        .try-btn {
+            background: rgba(139, 92, 246, 0.12);
+            color: var(--accent);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            padding: 7px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .try-btn:hover {
+            background: rgba(139, 92, 246, 0.2);
+        }
+
+        .try-result {
+            margin-top: 10px;
+            display: none;
+        }
+
+        .try-result pre {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .tab-nav {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        .tab-nav button {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab-nav button.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+    </style>
+
+    <!-- Auth Section -->
+    <div class="api-section">
+        <div class="card">
+            <div class="card-title">🔑 Xác thực API</div><br>
+            <p class="api-desc">
+                Tất cả API yêu cầu <strong>API Token</strong>. Bạn có thể tạo token trong trang
+                <a href="/admin/settings" style="color:var(--accent)">Cài đặt</a>.
+                Gửi token qua <strong>Header</strong> hoặc <strong>Query parameter</strong>:
+            </p>
+            <pre class="code-block"><span class="comment">// Cách 1: Header Authorization</span>
+Authorization: Bearer <span class="string">YOUR_API_TOKEN</span>
+
+<span class="comment">// Cách 2: Query parameter</span>
+GET /api/v1/videos?<span class="key">token</span>=<span class="string">YOUR_API_TOKEN</span></pre>
+
+            <% if (apiToken) { %>
+                <div style="margin-top:16px;">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600;">Token hiện
+                        tại của bạn:</div>
+                    <div class="token-box">
+                        <code id="api-token"><%= apiToken %></code>
+                        <button class="copy-btn" onclick="copyToken()">📋 Copy</button>
+                    </div>
+                </div>
+                <% } else { %>
+                    <div
+                        style="margin-top:16px;padding:14px 18px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:10px;font-size:13px;color:#ef4444;">
+                        ⚠️ Bạn chưa tạo API Token. <a href="/admin/settings" style="color:#ef4444;font-weight:600;">Tạo
+                            ngay →</a>
+                    </div>
+                    <% } %>
+        </div>
+    </div>
+
+    <!-- Base URL -->
+    <div class="api-section">
+        <div class="card">
+            <div class="card-title">🌐 Base URL</div><br>
+            <div class="endpoint" id="base-url-display"></div>
+            <p class="api-desc" style="margin-top:8px;">Tất cả endpoint bên dưới sử dụng base URL này. Response luôn ở
+                dạng <strong>JSON</strong>.</p>
+        </div>
+    </div>
+
+    <!-- GET /api/v1/videos -->
+    <div class="api-section">
+        <div class="api-card">
+            <h3><span class="method-badge method-get">GET</span> Danh sách video</h3>
+            <div class="endpoint">/api/v1/videos</div>
+            <p class="api-desc">Lấy danh sách tất cả video đã sẵn sàng (status = ready, visibility = public). Hỗ trợ
+                phân trang.</p>
+            <table class="param-table">
+                <thead>
+                    <tr>
+                        <th>Tham số</th>
+                        <th>Kiểu</th>
+                        <th>Mô tả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>page <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>number</td>
+                        <td>Trang (mặc định: 1)</td>
+                    </tr>
+                    <tr>
+                        <td>limit <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>number</td>
+                        <td>Số video mỗi trang (mặc định: 20, tối đa: 100)</td>
+                    </tr>
+                </tbody>
+            </table>
+            <pre class="code-block"><span class="comment">// Ví dụ request</span>
+curl -H "<span class="key">Authorization</span>: Bearer YOUR_TOKEN" \
+  <span class="string">http://localhost:3000/api/v1/videos?page=1&limit=10</span>
+
+<span class="comment">// Response</span>
+{
+  "<span class="key">page</span>": 1, "<span class="key">limit</span>": 10, "<span class="key">total</span>": 42,
+  "<span class="key">videos</span>": [
+    { "<span class="key">id</span>": 1, "<span class="key">title</span>": "...", "<span class="key">m3u8_url</span>": "...", "<span class="key">iframe_url</span>": "...", ... }
+  ]
+}</pre>
+            <div class="try-it"><button class="try-btn" onclick="tryApi('GET','/api/v1/videos?limit=5', null, this)">▶
+                    Thử ngay</button>
+                <div class="try-result">
+                    <pre class="code-block"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GET /api/v1/videos/:id -->
+    <div class="api-section">
+        <div class="api-card">
+            <h3><span class="method-badge method-get">GET</span> Chi tiết video</h3>
+            <div class="endpoint">/api/v1/videos/:id</div>
+            <p class="api-desc">Lấy thông tin chi tiết 1 video theo ID. Chỉ trả về video public + ready.</p>
+            <table class="param-table">
+                <thead>
+                    <tr>
+                        <th>Tham số</th>
+                        <th>Kiểu</th>
+                        <th>Mô tả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id <span class="required-tag">bắt buộc</span></td>
+                        <td>number</td>
+                        <td>ID video (trên URL path)</td>
+                    </tr>
+                </tbody>
+            </table>
+            <pre class="code-block"><span class="comment">// Response</span>
+{
+  "<span class="key">id</span>": 1,
+  "<span class="key">title</span>": "Phim ABC",
+  "<span class="key">description</span>": "...",
+  "<span class="key">thumbnail</span>": "thumb_1.jpg",
+  "<span class="key">m3u8_url</span>": "http://server/hls/1/master.m3u8",
+  "<span class="key">iframe_url</span>": "/embed/1",
+  "<span class="key">qualities</span>": "[\"720p\",\"1080p\"]",
+  "<span class="key">created_at</span>": "2026-03-09 14:30:00"
+}</pre>
+        </div>
+    </div>
+
+    <!-- GET /api/v1/videos/:id/stream -->
+    <div class="api-section">
+        <div class="api-card">
+            <h3><span class="method-badge method-get">GET</span> Stream video (redirect)</h3>
+            <div class="endpoint">/api/v1/videos/:id/stream</div>
+            <p class="api-desc">Redirect 302 tới link m3u8 của video. Dùng trực tiếp trong player HLS.</p>
+        </div>
+    </div>
+
+    <!-- POST /api/v1/upload/url -->
+    <div class="api-section">
+        <div class="api-card">
+            <h3><span class="method-badge method-post">POST</span> Upload từ URL (MP4, MKV...)</h3>
+            <div class="endpoint">/api/v1/upload/url</div>
+            <p class="api-desc">Upload video từ đường dẫn trực tiếp. Server sẽ tải file về, encode HLS và upload lên
+                server đã chọn.</p>
+            <table class="param-table">
+                <thead>
+                    <tr>
+                        <th>Tham số (body JSON)</th>
+                        <th>Kiểu</th>
+                        <th>Mô tả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>url <span class="required-tag">bắt buộc</span></td>
+                        <td>string</td>
+                        <td>Link trực tiếp tới file video (MP4, MKV, AVI, MOV, WEBM)</td>
+                    </tr>
+                    <tr>
+                        <td>title <span class="required-tag">bắt buộc</span></td>
+                        <td>string</td>
+                        <td>Tiêu đề video</td>
+                    </tr>
+                    <tr>
+                        <td>server_id <span class="required-tag">bắt buộc</span></td>
+                        <td>number</td>
+                        <td>ID server lưu trữ (<a href="#server-ids" style="color:var(--accent)">xem bên dưới</a>)</td>
+                    </tr>
+                    <tr>
+                        <td>description <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>string</td>
+                        <td>Mô tả video</td>
+                    </tr>
+                    <tr>
+                        <td>qualities <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>array</td>
+                        <td>Chất lượng render, vd: ["720p","1080p"]. Mặc định: ["720p"]</td>
+                    </tr>
+                    <tr>
+                        <td>visibility <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>string</td>
+                        <td>"public" hoặc "private". Mặc định: "public"</td>
+                    </tr>
+                </tbody>
+            </table>
+            <pre class="code-block"><span class="comment">// Ví dụ request</span>
+curl -X POST <span class="string">http://localhost:3000/api/v1/upload/url</span> \
+  -H "<span class="key">Authorization</span>: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "<span class="key">url</span>": "<span class="string">https://example.com/video.mp4</span>",
+    "<span class="key">title</span>": "<span class="string">Video từ URL</span>",
+    "<span class="key">server_id</span>": 1,
+    "<span class="key">qualities</span>": ["720p", "1080p"]
+  }'
+
+<span class="comment">// Response</span>
+{
+  "<span class="key">ok</span>": true,
+  "<span class="key">video_id</span>": 15,
+  "<span class="key">status</span>": "queued",
+  "<span class="key">message</span>": "Video đã được thêm vào hàng đợi xử lý."
+}</pre>
+        </div>
+    </div>
+
+    <!-- POST /api/v1/upload/drive -->
+    <div class="api-section">
+        <div class="api-card">
+            <h3><span class="method-badge method-post">POST</span> Upload từ Google Drive</h3>
+            <div class="endpoint">/api/v1/upload/drive</div>
+            <p class="api-desc">Upload video từ link chia sẻ Google Drive. Hệ thống tự chuyển sang link download trực
+                tiếp, tải file về và xử lý HLS.</p>
+            <div
+                style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#f97316;">
+                ⚠️ <strong>Lưu ý:</strong> File trên Drive phải được chia sẻ công khai (Anyone with the link). File lớn
+                trên 100MB cần bypass xác nhận virus scan — hệ thống đã tự động xử lý.
+            </div>
+            <table class="param-table">
+                <thead>
+                    <tr>
+                        <th>Tham số (body JSON)</th>
+                        <th>Kiểu</th>
+                        <th>Mô tả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>drive_url <span class="required-tag">bắt buộc</span></td>
+                        <td>string</td>
+                        <td>Link Google Drive (dạng /file/d/FILE_ID/view hoặc ?id=FILE_ID)</td>
+                    </tr>
+                    <tr>
+                        <td>title <span class="required-tag">bắt buộc</span></td>
+                        <td>string</td>
+                        <td>Tiêu đề video</td>
+                    </tr>
+                    <tr>
+                        <td>server_id <span class="required-tag">bắt buộc</span></td>
+                        <td>number</td>
+                        <td>ID server lưu trữ</td>
+                    </tr>
+                    <tr>
+                        <td>description <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>string</td>
+                        <td>Mô tả video</td>
+                    </tr>
+                    <tr>
+                        <td>qualities <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>array</td>
+                        <td>Chất lượng: ["360p","480p","720p","1080p"]</td>
+                    </tr>
+                    <tr>
+                        <td>visibility <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>string</td>
+                        <td>"public" hoặc "private"</td>
+                    </tr>
+                </tbody>
+            </table>
+            <pre class="code-block"><span class="comment">// Ví dụ request</span>
+curl -X POST <span class="string">http://localhost:3000/api/v1/upload/drive</span> \
+  -H "<span class="key">Authorization</span>: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "<span class="key">drive_url</span>": "<span class="string">https://drive.google.com/file/d/1aBcDeFgHiJkLmN/view</span>",
+    "<span class="key">title</span>": "<span class="string">Video từ Google Drive</span>",
+    "<span class="key">server_id</span>": 1,
+    "<span class="key">qualities</span>": ["720p"]
+  }'
+
+<span class="comment">// Response</span>
+{
+  "<span class="key">ok</span>": true,
+  "<span class="key">video_id</span>": 16,
+  "<span class="key">status</span>": "queued",
+  "<span class="key">message</span>": "Video từ Google Drive đã được thêm vào hàng đợi."
+}</pre>
+        </div>
+    </div>
+
+    <!-- GET /api/v1/upload/:id/status -->
+    <div class="api-section">
+        <div class="api-card">
+            <h3><span class="method-badge method-get">GET</span> Kiểm tra trạng thái upload</h3>
+            <div class="endpoint">/api/v1/upload/:id/status</div>
+            <p class="api-desc">Kiểm tra trạng thái xử lý video sau khi upload. Polling API này để theo dõi tiến trình
+                encode.</p>
+            <table class="param-table">
+                <thead>
+                    <tr>
+                        <th>Tham số</th>
+                        <th>Kiểu</th>
+                        <th>Mô tả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id <span class="required-tag">bắt buộc</span></td>
+                        <td>number</td>
+                        <td>Video ID (nhận được từ API upload)</td>
+                    </tr>
+                </tbody>
+            </table>
+            <pre
+                class="code-block"><span class="comment">// Response khi đang xử lý</span>
+{ "<span class="key">id</span>": 15, "<span class="key">status</span>": "processing", "<span class="key">progress</span>": 45, "<span class="key">m3u8_url</span>": null }
+
+<span class="comment">// Response khi hoàn thành</span>
+{ "<span class="key">id</span>": 15, "<span class="key">status</span>": "ready", "<span class="key">progress</span>": 100, "<span class="key">m3u8_url</span>": "http://..." }</pre>
+            <p class="api-desc" style="margin-top:12px;">
+                <strong>Trạng thái có thể:</strong>
+                <code style="color:#f59e0b">queued</code> →
+                <code style="color:#818cf8">processing</code> →
+                <code style="color:#60a5fa">uploading</code> →
+                <code style="color:#34d399">ready</code> |
+                <code style="color:#ef4444">error</code>
+            </p>
+        </div>
+    </div>
+
+    <!-- Server IDs -->
+    <div class="api-section" id="server-ids">
+        <div class="card">
+            <div class="card-title">🖥️ Danh sách Server (server_id)</div><br>
+            <p class="api-desc">Sử dụng một trong các <code>server_id</code> dưới đây khi gọi API upload:</p>
+            <% if (servers.length===0) { %>
+                <p style="color:var(--text-muted);font-size:13px;">Chưa có server nào. <a href="/admin/servers/add"
+                        style="color:var(--accent)">Thêm server →</a></p>
+                <% } else { %>
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th>server_id</th>
+                                <th>Label</th>
+                                <th>Loại</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% servers.forEach(function(s) { %>
+                                <tr>
+                                    <td><strong>
+                                            <%= s.id %>
+                                        </strong></td>
+                                    <td style="color:var(--text-primary)">
+                                        <%= s.label %>
+                                    </td>
+                                    <td>
+                                        <%= s.server_type==='r2' ? '☁️ Cloudflare R2' : '🖥️ SFTP' %>
+                                    </td>
+                                </tr>
+                                <% }) %>
+                        </tbody>
+                    </table>
+                    <% } %>
+        </div>
+    </div>
+
+    <!-- Error Codes -->
+    <div class="api-section">
+        <div class="card">
+            <div class="card-title">❌ Mã lỗi HTTP</div><br>
+            <table class="param-table">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Ý nghĩa</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>200</td>
+                        <td style="color:var(--text-primary)">Thành công</td>
+                    </tr>
+                    <tr>
+                        <td>400</td>
+                        <td style="color:var(--text-primary)">Thiếu tham số hoặc dữ liệu không hợp lệ</td>
+                    </tr>
+                    <tr>
+                        <td>401</td>
+                        <td style="color:var(--text-primary)">Token không hợp lệ hoặc thiếu</td>
+                    </tr>
+                    <tr>
+                        <td>404</td>
+                        <td style="color:var(--text-primary)">Không tìm thấy video</td>
+                    </tr>
+                    <tr>
+                        <td>500</td>
+                        <td style="color:var(--text-primary)">Lỗi server nội bộ</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('base-url-display').textContent = window.location.origin + '/api/v1';
+        var API_TOKEN = '<%= apiToken %>';
+
+        function copyToken() {
+            var t = document.getElementById('api-token');
+            if (t) { navigator.clipboard.writeText(t.textContent); var b = t.parentElement.querySelector('.copy-btn'); b.textContent = '✅ Copied!'; setTimeout(function () { b.textContent = '📋 Copy'; }, 1500); }
+        }
+
+        function tryApi(method, path, body, btn) {
+            var wrap = btn.parentElement.querySelector('.try-result');
+            var pre = wrap.querySelector('pre');
+            wrap.style.display = 'block';
+            pre.textContent = '⏳ Đang gọi API...';
+            var opts = { method: method, headers: { 'Authorization': 'Bearer ' + API_TOKEN, 'Content-Type': 'application/json' } };
+            if (body) opts.body = JSON.stringify(body);
+            fetch(window.location.origin + path, opts)
+                .then(function (r) { return r.json(); })
+                .then(function (data) { pre.textContent = JSON.stringify(data, null, 2); })
+                .catch(function (e) { pre.textContent = 'Error: ' + e.message; });
+        }
+    </script>
+
+    <%- include('../partials/footer') %>

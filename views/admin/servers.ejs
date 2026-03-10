@@ -3,14 +3,20 @@
     <div class="card">
         <div class="card-header">
             <span class="card-title">Danh sách Server (<%= servers.length %>)</span>
-            <a href="/admin/servers/add" class="btn btn-primary">➕ Thêm Server</a>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button id="ping-all-btn" class="btn btn-ghost btn-sm" onclick="pingAll()"
+                    title="Kiểm tra tất cả server">
+                    🔄 Ping All
+                </button>
+                <a href="/admin/servers/add" class="btn btn-primary">➕ Thêm Server</a>
+            </div>
         </div>
 
         <% if (servers.length===0) { %>
             <div class="empty-state">
                 <div class="empty-state-icon">🖥️</div>
                 <div class="empty-state-text">Chưa có server nào</div>
-                <div class="empty-state-hint">Thêm server để bắt đầu upload video</div>
+                <div class="empty-state-hint">Thêm server SFTP hoặc Cloudflare R2 để có thể upload video</div>
             </div>
             <% } else { %>
                 <div class="table-wrap">
@@ -18,9 +24,9 @@
                         <thead>
                             <tr>
                                 <th>Label</th>
-                                <th>IP : Port</th>
-                                <th>Username</th>
-                                <th>Storage Path</th>
+                                <th>Loại</th>
+                                <th>Kết nối</th>
+                                <th>Storage / Bucket</th>
                                 <th>Trạng thái</th>
                                 <th>Kiểm tra lần cuối</th>
                                 <th>Hành động</th>
@@ -28,34 +34,64 @@
                         </thead>
                         <tbody>
                             <% servers.forEach(function(s) { %>
-                                <tr data-server-id="<%= s.id %>" data-server-status>
+                                <tr data-server-id="<%= s.id %>">
                                     <td style="font-weight:500">
                                         <%= s.label %>
                                     </td>
-                                    <td style="font-family:monospace;font-size:13px;color:var(--text-secondary)">
-                                        <%= s.ip %>:<%= s.port %>
+                                    <td>
+                                        <% if (s.server_type==='r2' ) { %>
+                                            <span class="badge"
+                                                style="background:rgba(249,115,22,0.15);color:#f97316;border:1px solid rgba(249,115,22,0.3);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">☁️
+                                                R2</span>
+                                            <% } else { %>
+                                                <span class="badge"
+                                                    style="background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.3);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🖥️
+                                                    SFTP</span>
+                                                <% } %>
                                     </td>
-                                    <td style="color:var(--text-secondary)">
-                                        <%= s.username %>
+                                    <td style="font-family:monospace;font-size:13px;color:var(--text-secondary)">
+                                        <% if (s.server_type==='r2' ) { %>
+                                            <span style="color:var(--text-muted)">Account: </span>
+                                            <%= s.r2_account_id ? s.r2_account_id.substring(0,12) + '...' : '—' %>
+                                                <% } else { %>
+                                                    <%= s.ip %>:<%= s.port %> <span
+                                                                style="color:var(--text-muted);font-size:11px">(<%=
+                                                                    s.username %>)</span>
+                                                            <% } %>
                                     </td>
                                     <td style="font-family:monospace;font-size:12px;color:var(--text-muted)">
-                                        <%= s.storage_path %>
+                                        <% if (s.server_type==='r2' ) { %>
+                                            <%= s.r2_bucket || '—' %>
+                                                <% } else { %>
+                                                    <%= s.storage_path %>
+                                                        <% } %>
                                     </td>
                                     <td>
-                                        <% if (s.status==='live' ) { %>
-                                            <span class="badge badge-live status-badge">LIVE</span>
-                                            <% } else if (s.status==='die' ) { %>
-                                                <span class="badge badge-die status-badge">DIE</span>
-                                                <% } else { %>
-                                                    <span class="badge badge-unknown status-badge">UNKNOWN</span>
-                                                    <% } %>
+                                        <% if (s.server_type==='r2' ) { %>
+                                            <span class="status-badge" id="status-<%= s.id %>" data-status="r2"
+                                                style="background:rgba(52,211,153,0.1);color:#34d399;border:1px solid rgba(52,211,153,0.3);padding:3px 10px;border-radius:20px;font-size:11px;display:inline-block;">CDN</span>
+                                            <% } else if (s.status==='live' ) { %>
+                                                <span class="badge badge-live status-badge" id="status-<%= s.id %>"
+                                                    data-status="live">LIVE</span>
+                                                <% } else if (s.status==='die' ) { %>
+                                                    <span class="badge badge-die status-badge" id="status-<%= s.id %>"
+                                                        data-status="die">DIE</span>
+                                                    <% } else { %>
+                                                        <span class="badge badge-unknown status-badge"
+                                                            id="status-<%= s.id %>" data-status="unknown">UNKNOWN</span>
+                                                        <% } %>
                                     </td>
-                                    <td class="last-checked"
+                                    <td class="last-checked" id="checked-<%= s.id %>"
                                         style="color:var(--text-muted);font-size:13px;white-space:nowrap">
-                                        <%= s.last_checked || 'Chưa kiểm tra' %>
+                                        <% if (s.server_type==='r2' ) { %>—<% } else { %>
+                                                <%= s.last_checked || 'Chưa kiểm tra' %>
+                                                    <% } %>
                                     </td>
                                     <td>
                                         <div class="btn-group">
+                                            <button class="btn btn-ghost btn-sm ping-btn" data-id="<%= s.id %>"
+                                                data-type="<%= s.server_type %>" title="Kiểm tra kết nối"
+                                                onclick="pingServer(<%= s.id %>, this)">🔍</button>
                                             <a href="/admin/servers/<%= s.id %>/edit" class="btn btn-ghost btn-sm"
                                                 title="Sửa">✏️</a>
                                             <form action="/admin/servers/<%= s.id %>/delete" method="POST"
@@ -72,8 +108,142 @@
                 </div>
                 <% } %>
     </div>
+
+    <!-- Toast notification -->
+    <div id="ping-toast" style="
+    position:fixed;bottom:28px;right:28px;z-index:9999;
+    background:var(--bg-card);border:1px solid var(--border-color);
+    border-radius:12px;padding:14px 20px;min-width:280px;max-width:380px;
+    box-shadow:0 8px 32px rgba(0,0,0,0.4);
+    display:none;align-items:center;gap:12px;
+    animation:slideInToast 0.25s ease;
+"></div>
+
     <p style="color:var(--text-muted);font-size:12px;margin-top:12px;">
-        ⏱️ Trạng thái server được kiểm tra tự động mỗi 1 phút. Trang tự cập nhật mỗi 30 giây.
+        ⏱️ Trạng thái SFTP được kiểm tra tự động mỗi 1 phút. Nhấn 🔍 để kiểm tra thủ công ngay lập tức.
     </p>
+
+    <style>
+        @keyframes slideInToast {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .ping-btn.loading {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        .ping-btn.loading::before {
+            content: '⏳';
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+    </style>
+
+    <script>
+        function showToast(ok, message) {
+            var t = document.getElementById('ping-toast');
+            t.style.display = 'flex';
+            t.style.borderColor = ok ? 'rgba(52,211,153,0.4)' : 'rgba(239,68,68,0.4)';
+            t.innerHTML =
+                '<span style="font-size:22px">' + (ok ? '✅' : '❌') + '</span>' +
+                '<span style="font-size:13px;color:var(--text-primary);line-height:1.4">' + message + '</span>';
+            clearTimeout(window._toastTimer);
+            window._toastTimer = setTimeout(function () {
+                t.style.display = 'none';
+            }, 4000);
+        }
+
+        function updateStatusBadge(id, status) {
+            var badge = document.getElementById('status-' + id);
+            if (!badge) return;
+            // Remove old classes
+            badge.className = 'status-badge';
+            badge.removeAttribute('style');
+            if (status === 'live') {
+                badge.classList.add('badge', 'badge-live');
+                badge.textContent = 'LIVE';
+            } else if (status === 'die') {
+                badge.classList.add('badge', 'badge-die');
+                badge.textContent = 'DIE';
+            } else if (status === 'r2') {
+                badge.style.cssText = 'background:rgba(52,211,153,0.1);color:#34d399;border:1px solid rgba(52,211,153,0.3);padding:3px 10px;border-radius:20px;font-size:11px;display:inline-block;';
+                badge.textContent = 'CDN';
+            } else {
+                badge.classList.add('badge', 'badge-unknown');
+                badge.textContent = 'UNKNOWN';
+            }
+        }
+
+        function pingServer(id, btn) {
+            if (btn) { btn.classList.add('loading'); btn.textContent = ''; }
+
+            fetch('/admin/api/servers/' + id + '/ping', { method: 'POST' })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (btn) { btn.classList.remove('loading'); btn.textContent = '🔍'; }
+                    updateStatusBadge(id, data.status);
+                    var checked = document.getElementById('checked-' + id);
+                    if (checked && data.last_checked) checked.textContent = data.last_checked;
+                    showToast(data.ok, data.message);
+                })
+                .catch(function (e) {
+                    if (btn) { btn.classList.remove('loading'); btn.textContent = '🔍'; }
+                    showToast(false, 'Lỗi kết nối: ' + e.message);
+                });
+        }
+
+        function pingAll() {
+            var allBtn = document.getElementById('ping-all-btn');
+            var btns = document.querySelectorAll('.ping-btn');
+            if (allBtn) { allBtn.disabled = true; allBtn.textContent = '⏳ Đang ping...'; }
+            var ids = Array.from(btns).map(function (b) { return parseInt(b.dataset.id); });
+            var pending = ids.length;
+            if (!pending) return;
+
+            ids.forEach(function (id) {
+                var btn = document.querySelector('.ping-btn[data-id="' + id + '"]');
+                pingServerSilent(id, btn, function () {
+                    pending--;
+                    if (pending === 0 && allBtn) {
+                        allBtn.disabled = false;
+                        allBtn.textContent = '🔄 Ping All';
+                        showToast(true, 'Đã kiểm tra toàn bộ ' + ids.length + ' server!');
+                    }
+                });
+            });
+        }
+
+        function pingServerSilent(id, btn, done) {
+            if (btn) { btn.classList.add('loading'); btn.textContent = ''; }
+            fetch('/admin/api/servers/' + id + '/ping', { method: 'POST' })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (btn) { btn.classList.remove('loading'); btn.textContent = '🔍'; }
+                    updateStatusBadge(id, data.status);
+                    var checked = document.getElementById('checked-' + id);
+                    if (checked && data.last_checked) checked.textContent = data.last_checked;
+                    if (done) done();
+                })
+                .catch(function () {
+                    if (btn) { btn.classList.remove('loading'); btn.textContent = '🔍'; }
+                    if (done) done();
+                });
+        }
+    </script>
 
     <%- include('../partials/footer') %>

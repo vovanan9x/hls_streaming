@@ -83,6 +83,54 @@ function initTables() {
       last_ping DATETIME DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS error_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL DEFAULT 'unknown',
+      video_id INTEGER DEFAULT NULL,
+      video_title TEXT DEFAULT '',
+      server_id INTEGER DEFAULT NULL,
+      server_label TEXT DEFAULT '',
+      message TEXT NOT NULL,
+      stack TEXT DEFAULT '',
+      created_at DATETIME DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS delete_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      video_id INTEGER NOT NULL,
+      video_title TEXT DEFAULT '',
+      requested_by INTEGER NOT NULL,
+      reason TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      reviewed_by INTEGER DEFAULT NULL,
+      created_at DATETIME DEFAULT (datetime('now','localtime')),
+      reviewed_at DATETIME DEFAULT NULL,
+      FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
+      FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS cdn_domains (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      label         TEXT DEFAULT '',
+      domain        TEXT NOT NULL UNIQUE,
+      server_id     INTEGER REFERENCES servers(id) ON DELETE SET NULL,
+      cf_email      TEXT DEFAULT '',
+      cf_api_token  TEXT DEFAULT '',
+      cf_zone_id    TEXT DEFAULT '',
+      is_active     INTEGER DEFAULT 1,
+      note          TEXT DEFAULT '',
+      created_at    DATETIME DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS cf_create_jobs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      domain     TEXT NOT NULL,
+      server_id  INTEGER DEFAULT NULL,
+      status     TEXT DEFAULT 'pending',
+      log        TEXT DEFAULT '[]',
+      created_at DATETIME DEFAULT (datetime('now','localtime'))
+    );
   `);
 
   // Migrate existing DB columns
@@ -91,6 +139,14 @@ function initTables() {
     `ALTER TABLE videos ADD COLUMN qualities TEXT DEFAULT '["720p"]'`,
     `ALTER TABLE videos ADD COLUMN visibility TEXT DEFAULT 'public'`,
     `ALTER TABLE users ADD COLUMN api_token TEXT DEFAULT NULL`,
+    // Server type support: sftp (default) or r2
+    `ALTER TABLE servers ADD COLUMN server_type TEXT DEFAULT 'sftp'`,
+    `ALTER TABLE servers ADD COLUMN r2_account_id TEXT DEFAULT ''`,
+    `ALTER TABLE servers ADD COLUMN r2_access_key TEXT DEFAULT ''`,
+    `ALTER TABLE servers ADD COLUMN r2_secret_key TEXT DEFAULT ''`,
+    `ALTER TABLE servers ADD COLUMN r2_bucket TEXT DEFAULT ''`,
+    `ALTER TABLE servers ADD COLUMN r2_public_url TEXT DEFAULT ''`,
+    `ALTER TABLE servers ADD COLUMN cdn_url TEXT DEFAULT ''`,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (e) { /* already exists */ }
@@ -119,4 +175,29 @@ function setSetting(key, value) {
   `).run(key, String(value));
 }
 
-module.exports = { getDb, getSetting, setSetting };
+/**
+ * Ghi một lỗi vào bảng error_logs
+ * @param {'encode'|'upload'|'thumb'|'sftp'|'r2'|'unknown'} type
+ * @param {object} opts - { videoId, videoTitle, serverId, serverLabel, message, stack }
+ */
+function addErrorLog(type, opts = {}) {
+  try {
+    const d = getDb();
+    d.prepare(`
+      INSERT INTO error_logs (type, video_id, video_title, server_id, server_label, message, stack)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      type,
+      opts.videoId || null,
+      opts.videoTitle || '',
+      opts.serverId || null,
+      opts.serverLabel || '',
+      String(opts.message || '').substring(0, 2000),
+      String(opts.stack || '').substring(0, 4000)
+    );
+  } catch (e) {
+    console.error('[ErrorLog] Failed to insert log:', e.message);
+  }
+}
+
+module.exports = { getDb, getSetting, setSetting, addErrorLog };

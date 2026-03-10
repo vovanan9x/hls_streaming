@@ -1,0 +1,360 @@
+<%- include('../partials/header') %>
+    <style>
+        .filter-bar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .filter-bar a,
+        .filter-bar button {
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid var(--border-color);
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-bar a:hover,
+        .filter-bar button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .filter-bar a.active {
+            background: rgba(139, 92, 246, 0.12);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .filter-bar .btn-clear {
+            background: rgba(239, 68, 68, 0.08);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+        }
+
+        .filter-bar .btn-clear:hover {
+            background: rgba(239, 68, 68, 0.18);
+        }
+
+        .log-card {
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 16px 18px;
+            margin-bottom: 12px;
+            background: var(--bg-card);
+            transition: border-color 0.2s;
+        }
+
+        .log-card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .log-card.type-encode {
+            border-left: 3px solid #f59e0b;
+        }
+
+        .log-card.type-sftp {
+            border-left: 3px solid #818cf8;
+        }
+
+        .log-card.type-r2 {
+            border-left: 3px solid #f97316;
+        }
+
+        .log-card.type-thumb {
+            border-left: 3px solid #06b6d4;
+        }
+
+        .log-card.type-unknown {
+            border-left: 3px solid #6b7280;
+        }
+
+        .log-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+
+        .log-type-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 10px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .log-type-encode {
+            background: rgba(245, 158, 11, 0.15);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .log-type-sftp {
+            background: rgba(129, 140, 248, 0.15);
+            color: #818cf8;
+            border: 1px solid rgba(129, 140, 248, 0.3);
+        }
+
+        .log-type-r2 {
+            background: rgba(249, 115, 22, 0.15);
+            color: #f97316;
+            border: 1px solid rgba(249, 115, 22, 0.3);
+        }
+
+        .log-type-thumb {
+            background: rgba(6, 182, 212, 0.15);
+            color: #06b6d4;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+
+        .log-type-unknown {
+            background: rgba(107, 114, 128, 0.15);
+            color: #9ca3af;
+            border: 1px solid rgba(107, 114, 128, 0.3);
+        }
+
+        .log-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .log-message {
+            font-size: 13px;
+            color: var(--text-primary);
+            margin: 8px 0 4px;
+            word-break: break-word;
+        }
+
+        .log-stack {
+            display: none;
+            background: #0d1117;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 11px;
+            font-family: monospace;
+            color: #c9d1d9;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin-top: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .toggle-stack {
+            font-size: 11px;
+            color: var(--text-muted);
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .toggle-stack:hover {
+            color: var(--accent);
+        }
+
+        .del-btn {
+            margin-left: auto;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 15px;
+            padding: 2px 6px;
+            border-radius: 5px;
+        }
+
+        .del-btn:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .stat-chips {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .stat-chip {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid;
+        }
+
+        .pager {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 24px;
+        }
+
+        .pager a {
+            padding: 6px 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-decoration: none;
+        }
+
+        .pager a.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .pager a:hover:not(.active) {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+    </style>
+
+    <div class="card">
+        <!-- Header + filter -->
+        <div class="card-header" style="flex-wrap:wrap;gap:10px;">
+            <span class="card-title">🚨 Nhật ký Lỗi
+                <% if (total> 0) { %>
+                    <span style="font-size:13px;color:var(--text-muted);font-weight:400;">(tổng <%= total %> lỗi)</span>
+                    <% } %>
+            </span>
+            <% if (total> 0) { %>
+                <form action="/admin/errors/clear" method="POST" onsubmit="return confirm('Xoá toàn bộ log lỗi?')"
+                    style="margin:0;">
+                    <% if (filterType) { %><input type="hidden" name="type" value="<%= filterType %>">
+                        <% } %>
+                            <button type="submit" class="btn btn-danger btn-sm">🗑️ Xoá tất cả<% if(filterType) { %> (
+                                    <%= filterType %>)<% } %></button>
+                </form>
+                <% } %>
+        </div>
+
+        <!-- Stats chips -->
+        <% const typeColors={ encode: {bg:'rgba(245,158,11,0.12)', color:'#f59e0b', border:'rgba(245,158,11,0.35)',
+            label:'🎬 Encode'}, sftp: {bg:'rgba(129,140,248,0.12)', color:'#818cf8', border:'rgba(129,140,248,0.35)',
+            label:'🖥️ SFTP'}, r2: {bg:'rgba(249,115,22,0.12)', color:'#f97316', border:'rgba(249,115,22,0.35)',
+            label:'☁️ R2'}, thumb: {bg:'rgba(6,182,212,0.12)', color:'#06b6d4', border:'rgba(6,182,212,0.35)',
+            label:'🖼️ Thumb'}, unknown:{bg:'rgba(107,114,128,0.12)', color:'#9ca3af', border:'rgba(107,114,128,0.35)',
+            label:'❓ Khác'}, }; %>
+            <div class="filter-bar" style="margin-top:4px;">
+                <a href="/admin/errors" class="<%= !filterType ? 'active' : '' %>">Tất cả</a>
+                <% Object.keys(typeColors).forEach(function(t) { %>
+                    <a href="/admin/errors?type=<%= t %>" class="<%= filterType===t ? 'active' : '' %>">
+                        <%= typeColors[t].label %>
+                    </a>
+                    <% }) %>
+            </div>
+
+            <% if (logs.length===0) { %>
+                <div class="empty-state" style="padding:50px 0;">
+                    <div class="empty-state-icon">✅</div>
+                    <div class="empty-state-text">Không có lỗi nào</div>
+                    <div class="empty-state-hint">Tuyệt vời! Hệ thống đang hoạt động bình thường.</div>
+                </div>
+                <% } else { %>
+
+                    <!-- Log list -->
+                    <% logs.forEach(function(log) { const tc=typeColors[log.type] || typeColors.unknown; const
+                        hasStack=log.stack && log.stack.trim().length> 0;
+                        %>
+                        <div class="log-card type-<%= log.type %>" id="log-<%= log.id %>">
+                            <div class="log-header">
+                                <span class="log-type-badge log-type-<%= log.type %>">
+                                    <%= (typeColors[log.type]||typeColors.unknown).label %>
+                                </span>
+                                <% if (log.video_title) { %>
+                                    <span style="font-size:13px;color:var(--text-primary);font-weight:500;">🎬 <%=
+                                            log.video_title %></span>
+                                    <% } %>
+                                        <% if (log.video_id) { %>
+                                            <span style="font-size:11px;color:var(--text-muted);">ID: <%= log.video_id
+                                                    %></span>
+                                            <% } %>
+                                                <% if (log.server_label) { %>
+                                                    <span style="font-size:11px;color:var(--text-muted);">🖥️ <%=
+                                                            log.server_label %></span>
+                                                    <% } %>
+                                                        <button class="del-btn" onclick="deleteLog(<%= log.id %>)"
+                                                            title="Xoá log này">✕</button>
+                            </div>
+                            <div class="log-message">❌ <%= log.message %>
+                            </div>
+                            <div class="log-meta">
+                                <span>🕐 <%= log.created_at %></span>
+                                <% if (hasStack) { %>
+                                    <span class="toggle-stack" onclick="toggleStack(<%= log.id %>)">▶ Xem Stack
+                                        Trace</span>
+                                    <% } %>
+                            </div>
+                            <% if (hasStack) { %>
+                                <pre class="log-stack" id="stack-<%= log.id %>"><%= log.stack %></pre>
+                                <% } %>
+                        </div>
+                        <% }) %>
+
+                            <!-- Pagination -->
+                            <% if (totalPages> 1) { %>
+                                <div class="pager">
+                                    <% for(var p=1; p<=totalPages; p++) { %>
+                                        <a href="/admin/errors?page=<%= p %><%= filterType ? '&type='+filterType : '' %>"
+                                            class="<%= p===page ? 'active' : '' %>">
+                                            <%= p %>
+                                        </a>
+                                        <% } %>
+                                </div>
+                                <% } %>
+                                    <% } %>
+    </div>
+
+    <div id="err-toast"
+        style="position:fixed;bottom:24px;right:24px;background:rgba(239,68,68,0.9);color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;display:none;z-index:9999;">
+    </div>
+
+    <script>
+        function toggleStack(id) {
+            var el = document.getElementById('stack-' + id);
+            var btn = el.previousElementSibling.querySelector('.toggle-stack');
+            if (!el) return;
+            if (el.style.display === 'block') {
+                el.style.display = 'none';
+                if (btn) btn.textContent = '▶ Xem Stack Trace';
+            } else {
+                el.style.display = 'block';
+                if (btn) btn.textContent = '▼ Ẩn Stack Trace';
+            }
+        }
+
+        function deleteLog(id) {
+            fetch('/admin/api/errors/' + id + '/delete', { method: 'POST' })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.ok) {
+                        var el = document.getElementById('log-' + id);
+                        if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; setTimeout(function () { el.remove(); }, 300); }
+                    }
+                })
+                .catch(function () {
+                    var t = document.getElementById('err-toast');
+                    t.textContent = 'Không thể xoá log!';
+                    t.style.display = 'block';
+                    setTimeout(function () { t.style.display = 'none'; }, 3000);
+                });
+        }
+    </script>
+
+    <%- include('../partials/footer') %>

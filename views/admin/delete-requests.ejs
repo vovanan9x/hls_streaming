@@ -1,0 +1,162 @@
+<%- include('../partials/header') %>
+
+    <% var msgText='' ; var msgType='success' ; if (typeof msg !=='undefined' && msg==='approved' ) {
+        msgText='Da duyet va xoa video thanh cong.' ; } else if (typeof msg !=='undefined' && msg==='rejected' ) {
+        msgText='Da tu choi yeu cau xoa.' ; msgType='warn' ; } else if (typeof msg !=='undefined' && msg==='invalid' ) {
+        msgText='Yeu cau khong hop le hoac da duoc xu ly.' ; msgType='warn' ; } %>
+
+        <% if (msgText) { %>
+            <div id="page-toast"
+                style="position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;max-width:380px;box-shadow:0 4px 20px rgba(0,0,0,0.3);background:<%= msgType==='success'?'rgba(52,211,153,0.15)':'rgba(234,179,8,0.15)' %>;border:1px solid <%= msgType==='success'?'rgba(52,211,153,0.3)':'rgba(234,179,8,0.3)' %>;color:<%= msgType==='success'?'#34d399':'#fbbf24' %>;">
+                <% if (msgType==='success' ) { %>&#x2705;<% } else { %>&#x26A0;&#xFE0F;<% } %>
+                            <%= msgText %>
+            </div>
+            <% } %>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">
+                            Y&#xEA;u c&#x1EA7;u Xo&#xE1; Video
+                            <% if (pendingCount> 0) { %>
+                                <span
+                                    style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;margin-left:8px;">
+                                    <%= pendingCount %>
+                                </span>
+                                <% } %>
+                        </span>
+                        <a href="/admin/videos" class="btn btn-ghost btn-sm">&#x2190; Danh s&#xE1;ch Video</a>
+                    </div>
+
+                    <% if (requests.length===0) { %>
+                        <div class="empty-state">
+                            <div class="empty-state-icon">&#x1F5D1;&#xFE0F;</div>
+                            <div class="empty-state-text">Ch&#x01B0;a c&#xF3; y&#xEA;u c&#x1EA7;u xo&#xE1; n&#xE0;o
+                            </div>
+                            <div class="empty-state-hint">Khi uploader g&#x1EED;i y&#xEA;u c&#x1EA7;u xo&#xE1; video,
+                                ch&#xFA;ng s&#x1EBD; hi&#x1EC3;n th&#x1ECB; &#x1EDF; &#x111;&#xE2;y</div>
+                        </div>
+                        <% } else { %>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Video</th>
+                                            <th>Ng&#x01B0;&#x1EDD;i y&#xEA;u c&#x1EA7;u</th>
+                                            <th>L&#xFD; do</th>
+                                            <th>Ng&#xE0;y g&#x1EED;i</th>
+                                            <th>Tr&#x1EA1;ng th&#xE1;i</th>
+                                            <th>H&#xE0;nh &#x111;&#x1ED9;ng</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <% requests.forEach(function(r) { %>
+                                            <tr style="<%= r.status !== 'pending' ? 'opacity:0.6;' : '' %>">
+                                                <td class="td-title" style="max-width:220px;">
+                                                    <% if (r.video_thumb) { %>
+                                                        <img src="/uploads/thumbnails/<%= r.video_thumb %>" alt=""
+                                                            style="width:48px;height:28px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:8px;">
+                                                        <% } %>
+                                                            <span style="vertical-align:middle;">
+                                                                <% if (r.video_title_live) { %>
+                                                                    <strong>
+                                                                        <%= r.video_title_live %>
+                                                                    </strong>
+                                                                    <% } else { %>
+                                                                        <span
+                                                                            style="color:var(--text-muted);font-style:italic;">
+                                                                            <%= r.video_title || '(da bi xoa)' %>
+                                                                        </span>
+                                                                        <% } %>
+                                                                            <small style="display:block;">ID: <%=
+                                                                                    r.video_id %></small>
+                                                            </span>
+                                                </td>
+                                                <td style="color:var(--text-secondary);font-size:13px;">
+                                                    <%= r.requester_name || '&mdash;' %>
+                                                </td>
+                                                <td style="max-width:200px;font-size:13px;color:var(--text-secondary);">
+                                                    <% if (r.reason) { %>
+                                                        <span title="<%= r.reason %>">
+                                                            <%= r.reason.length> 80 ? r.reason.substring(0,80) + '...' :
+                                                                r.reason %>
+                                                        </span>
+                                                        <% } else { %>
+                                                            <span
+                                                                style="color:var(--text-muted);font-style:italic;">Khong
+                                                                co ly do</span>
+                                                            <% } %>
+                                                </td>
+                                                <td style="color:var(--text-muted);font-size:12px;white-space:nowrap;">
+                                                    <%= r.created_at %>
+                                                </td>
+                                                <td>
+                                                    <% if (r.status==='pending' ) { %>
+                                                        <span class="badge"
+                                                            style="background:rgba(234,179,8,0.15);color:#fbbf24;">&#x23F3;
+                                                            Ch&#x1EDD; duy&#x1EC7;t</span>
+                                                        <% } else if (r.status==='approved' ) { %>
+                                                            <span class="badge badge-ready">&#x2705; &#x110;&#xE3;
+                                                                duy&#x1EC7;t</span>
+                                                            <% if (r.reviewer_name) { %><small
+                                                                    style="display:block;color:var(--text-muted);margin-top:2px;">b&#x1EDF;i
+                                                                    <%= r.reviewer_name %></small>
+                                                                <% } %>
+                                                                    <% } else if (r.status==='rejected' ) { %>
+                                                                        <span class="badge badge-error">&#x1F6AB;
+                                                                            T&#x1EEB; ch&#x1ED1;i</span>
+                                                                        <% if (r.reviewer_name) { %><small
+                                                                                style="display:block;color:var(--text-muted);margin-top:2px;">b&#x1EDF;i
+                                                                                <%= r.reviewer_name %></small>
+                                                                            <% } %>
+                                                                                <% } %>
+                                                </td>
+                                                <td>
+                                                    <% if (r.status==='pending' ) { %>
+                                                        <% var safeTitle=(r.video_title_live || r.video_title || ''
+                                                            ).replace(/'/g, "\\'" ); %>
+                                                            <div class="btn-group">
+                                                                <form
+                                                                    action="/admin/delete-requests/<%= r.id %>/approve"
+                                                                    method="POST" style="margin:0;"
+                                                                    data-vname="<%= safeTitle %>" class="approve-form">
+                                                                    <button type="submit"
+                                                                        class="btn btn-danger btn-sm">&#x2705;
+                                                                        Duy&#x1EC7;t &amp; Xo&#xE1;</button>
+                                                                </form>
+                                                                <form action="/admin/delete-requests/<%= r.id %>/reject"
+                                                                    method="POST" style="margin:0;">
+                                                                    <button type="submit"
+                                                                        class="btn btn-ghost btn-sm">&#x1F6AB; T&#x1EEB;
+                                                                        ch&#x1ED1;i</button>
+                                                                </form>
+                                                            </div>
+                                                            <% } else { %>
+                                                                <span style="color:var(--text-muted);font-size:12px;">
+                                                                    <%= r.reviewed_at ? r.reviewed_at.substring(0,16)
+                                                                        : '' %>
+                                                                </span>
+                                                                <% } %>
+                                                </td>
+                                            </tr>
+                                            <% }); %>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <% } %>
+                </div>
+
+                <script>
+                    (function () {
+                        var toast = document.getElementById('page-toast');
+                        if (toast) { setTimeout(function () { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.4s'; setTimeout(function () { if (toast.parentNode) toast.remove(); }, 400); }, 4000); }
+
+                        document.querySelectorAll('.approve-form').forEach(function (f) {
+                            f.addEventListener('submit', function (e) {
+                                var vn = this.dataset.vname || 'video nay';
+                                if (!confirm('Duyet va XOA video: ' + vn + '? Hanh dong nay khong the hoan tac!')) e.preventDefault();
+                            });
+                        });
+                    })();
+                </script>
+
+                <%- include('../partials/footer') %>

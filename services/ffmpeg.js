@@ -8,11 +8,16 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 
 // Quality presets
+// sd: encode xuống tối đa 720p (không upscale nếu gốc nhỏ hơn)
+// hd: giữ nguyên độ phân giải gốc 100%
 const QUALITY_PRESETS = {
-    '360p': { width: 640, height: 360, videoBitrate: '800k', audioBitrate: '96k', bandwidth: 896000 },
-    '480p': { width: 854, height: 480, videoBitrate: '1400k', audioBitrate: '128k', bandwidth: 1536000 },
-    '720p': { width: 1280, height: 720, videoBitrate: '2800k', audioBitrate: '128k', bandwidth: 2944000 },
-    '1080p': { width: 1920, height: 1080, videoBitrate: '5000k', audioBitrate: '192k', bandwidth: 5248000 },
+    'sd': { maxHeight: 720, videoBitrate: '2000k', audioBitrate: '128k', bandwidth: 2176000, scaleDown: true },
+    'hd': { videoBitrate: '0', audioBitrate: '192k', bandwidth: 8000000, scaleDown: false },
+    // Legacy presets (backwards compat)
+    '360p': { width: 640, height: 360, videoBitrate: '800k', audioBitrate: '96k', bandwidth: 896000, scaleDown: 'fixed' },
+    '480p': { width: 854, height: 480, videoBitrate: '1400k', audioBitrate: '128k', bandwidth: 1536000, scaleDown: 'fixed' },
+    '720p': { width: 1280, height: 720, videoBitrate: '2800k', audioBitrate: '128k', bandwidth: 2944000, scaleDown: 'fixed' },
+    '1080p': { width: 1920, height: 1080, videoBitrate: '5000k', audioBitrate: '192k', bandwidth: 5248000, scaleDown: 'fixed' },
 };
 
 /**
@@ -37,33 +42,54 @@ function getVideoDuration(inputPath) {
     });
 }
 
+// Lưu các ffmpeg command đang chạy theo videoId
+const runningCommands = new Map();
+
 /**
  * Encode a single quality stream to HLS
  */
-function encodeQuality(inputPath, outputDir, preset, qualityName, totalDuration, onProgress) {
+function encodeQuality(inputPath, outputDir, preset, qualityName, totalDuration, onProgress, videoId) {
     return new Promise((resolve, reject) => {
         fs.mkdirSync(outputDir, { recursive: true });
         const m3u8 = path.join(outputDir, 'index.m3u8');
         let lastReported = -1;
 
-        ffmpeg(inputPath)
-            .outputOptions([
-                `-vf scale=${preset.width}:${preset.height}:force_original_aspect_ratio=decrease,pad=${preset.width}:${preset.height}:(ow-iw)/2:(oh-ih)/2`,
-                `-b:v ${preset.videoBitrate}`,
-                `-b:a ${preset.audioBitrate}`,
-                '-codec:v libx264',
-                '-codec:a aac',
-                '-profile:v baseline',
-                '-level 3.0',
-                '-start_number 0',
-                '-hls_time 6',
-                '-hls_list_size 0',
-                `-hls_segment_filename ${path.join(outputDir, 'seg_%03d.ts')}`,
-                '-f hls'
-            ])
+        // Build output options dựa vào loại preset
+        const outputOpts = [];
+        if (preset.scaleDown === 'fixed') {
+            // Legacy 360p/480p/720p/1080p: scale cố định + pad
+            outputOpts.push(`-vf scale=${preset.width}:${preset.height}:force_original_aspect_ratio=decrease,pad=${preset.width}:${preset.height}:(ow-iw)/2:(oh-ih)/2`);
+        } else if (preset.scaleDown === true && preset.maxHeight) {
+            // SD: scale xuống tối đa maxHeight, KHÔNG upscale nếu gốc nhỏ hơn, KHÔNG pad
+            // scale=-2:min(ih\,720) → giữ nguyên tỉ lệ, chiều cao tối đa 720px
+            outputOpts.push(`-vf scale=-2:min(ih\,${preset.maxHeight})`);
+        }
+        // HD (scaleDown=false): không thêm bộ lọc scale → giữ nguyên gốc
+
+        // Nếu videoBitrate = '0' (HD gốc): dùng CRF để giữ chất lượng
+        if (preset.videoBitrate === '0') {
+            outputOpts.push('-crf 18');
+        } else {
+            outputOpts.push(`-b:v ${preset.videoBitrate}`);
+        }
+        outputOpts.push(
+            `-b:a ${preset.audioBitrate}`,
+            '-codec:v libx264',
+            '-codec:a aac',
+            '-profile:v baseline',
+            '-level 3.0',
+            '-start_number 0',
+            '-hls_time 6',
+            '-hls_list_size 0',
+            `-hls_segment_filename ${path.join(outputDir, 'seg_%03d.ts')}`,
+            '-f hls'
+        );
+
+        const cmd = ffmpeg(inputPath)
+            .outputOptions(outputOpts)
             .output(m3u8)
             .on('start', () => {
-                console.log(`[FFmpeg] Encoding ${qualityName}...`);
+                console.log(`[FFmpeg] Encoding ${qualityName} for video ${videoId}...`);
                 if (onProgress) onProgress(1);
             })
             .on('progress', (progress) => {
@@ -79,12 +105,37 @@ function encodeQuality(inputPath, outputDir, preset, qualityName, totalDuration,
                 }
             })
             .on('end', () => {
-                console.log(`[FFmpeg] ${qualityName} done`);
+                console.log(`[FFmpeg] ${qualityName} done for video ${videoId}`);
+                runningCommands.delete(videoId);
                 resolve(m3u8);
             })
-            .on('error', reject)
-            .run();
+            .on('error', (err) => {
+                runningCommands.delete(videoId);
+                reject(err);
+            });
+
+        // Lưu vào map để có thể kill sau
+        runningCommands.set(videoId, cmd);
+        cmd.run();
     });
+}
+
+/**
+ * Kill ffmpeg process đang chạy cho một video ID (nếu có)
+ */
+function killFFmpeg(videoId) {
+    const cmd = runningCommands.get(videoId);
+    if (cmd) {
+        console.log(`[FFmpeg] Killing process for video ${videoId}`);
+        try {
+            cmd.kill('SIGKILL');
+        } catch (e) {
+            console.error(`[FFmpeg] Failed to kill process ${videoId}: ${e.message}`);
+        }
+        runningCommands.delete(videoId);
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -95,7 +146,12 @@ function writeMasterPlaylist(outputDir, qualities) {
     for (const q of qualities) {
         const preset = QUALITY_PRESETS[q];
         if (!preset) continue;
-        content += `#EXT-X-STREAM-INF:BANDWIDTH=${preset.bandwidth},RESOLUTION=${preset.width}x${preset.height},NAME="${q}"\n`;
+        // HD không có kích thước cố định, bỏ qua RESOLUTION nếu không có
+        if (preset.scaleDown !== false && preset.width && preset.height) {
+            content += `#EXT-X-STREAM-INF:BANDWIDTH=${preset.bandwidth},RESOLUTION=${preset.width}x${preset.height},NAME="${q}"\n`;
+        } else {
+            content += `#EXT-X-STREAM-INF:BANDWIDTH=${preset.bandwidth},NAME="${q}"\n`;
+        }
         content += `${q}/index.m3u8\n`;
     }
     fs.writeFileSync(path.join(outputDir, 'master.m3u8'), content, 'utf8');
@@ -111,8 +167,8 @@ function writeMasterPlaylist(outputDir, qualities) {
  * @returns {Promise<string>} - path to master.m3u8
  */
 async function convertToHLS(inputPath, hlsBase, videoId, qualities, onProgress) {
-    // Default to 720p if not specified
-    if (!qualities || qualities.length === 0) qualities = ['720p'];
+    // Default to sd if not specified
+    if (!qualities || qualities.length === 0) qualities = ['sd'];
 
     const totalDuration = await getVideoDuration(inputPath);
     const videoDir = path.join(hlsBase, videoId);
@@ -133,7 +189,7 @@ async function convertToHLS(inputPath, hlsBase, videoId, qualities, onProgress) 
         await encodeQuality(inputPath, qDir, preset, q, totalDuration, (pct) => {
             const overall = Math.round((i / total) * 100 + (pct / total));
             if (onProgress) onProgress(Math.min(99, overall));
-        });
+        }, videoId);
     }
 
     // Write master playlist
@@ -167,4 +223,4 @@ function generateThumbnail(inputPath, outputDir, filename) {
     });
 }
 
-module.exports = { convertToHLS, generateThumbnail, QUALITY_PRESETS };
+module.exports = { convertToHLS, generateThumbnail, killFFmpeg, QUALITY_PRESETS };

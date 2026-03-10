@@ -11,22 +11,31 @@
 
                     <a href="/admin/servers" class="btn btn-ghost" style="margin-bottom:20px;">← Quay lại danh sách</a>
 
-                    <form action="/admin/servers/<%= server ? server.id + '/edit' : 'add' %>" method="POST">
+                    <form action="/admin/servers/<%= server ? server.id + '/edit' : 'add' %>" method="POST"
+                        id="server-form">
                         <div class="card">
                             <div class="card-title">
                                 <%= server ? 'Sửa Server #' + server.id : 'Thêm Server mới' %>
                             </div>
                             <br>
+
+                            <!-- Label -->
                             <div class="form-group">
                                 <label class="form-label">Label *</label>
                                 <input type="text" name="label" class="form-input"
-                                    value="<%= server ? server.label : '' %>" placeholder="VD: Server US-01" required>
+                                    value="<%= server ? server.label : '' %>" placeholder="VD: Hetzner-EU-01" required>
                             </div>
+                        </div>
+
+                        <!-- SFTP Fields -->
+                        <div class="card" id="sftp-fields" style="margin-top:16px;">
+                            <div class="card-title">🖥️ Cấu hình SFTP</div>
+                            <br>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label class="form-label">IP Address *</label>
                                     <input type="text" name="ip" class="form-input"
-                                        value="<%= server ? server.ip : '' %>" placeholder="123.456.789.0" required>
+                                        value="<%= server ? server.ip : '' %>" placeholder="123.456.789.0">
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">Port</label>
@@ -38,12 +47,12 @@
                                 <div class="form-group">
                                     <label class="form-label">Username *</label>
                                     <input type="text" name="username" class="form-input"
-                                        value="<%= server ? server.username : '' %>" placeholder="root" required>
+                                        value="<%= server ? server.username : '' %>" placeholder="root">
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">Password</label>
-                                    <input type="password" name="password" class="form-input"
-                                        value="<%= server ? server.password : '' %>" placeholder="••••••••">
+                                    <label class="form-label">Password <small style="color:var(--text-muted)">(để trống
+                                            = không đổi)</small></label>
+                                    <input type="password" name="password" class="form-input" placeholder="••••••••">
                                 </div>
                             </div>
                             <div class="form-group">
@@ -51,10 +60,24 @@
                                 <input type="text" name="storage_path" class="form-input"
                                     value="<%= server ? server.storage_path : '/var/hls-storage' %>"
                                     placeholder="/var/hls-storage">
+                                <small style="color:var(--text-muted);margin-top:4px;display:block">
+                                    Thư mục trên server để lưu HLS files. Nginx cần serve thư mục này.
+                                </small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">🌐 CDN URL <small style="color:var(--text-muted)">(tuỳ
+                                        chọn)</small></label>
+                                <input type="url" name="cdn_url" class="form-input"
+                                    value="<%= server ? server.cdn_url : '' %>"
+                                    placeholder="https://cdn.viettelidc.com.vn">
+                                <small style="color:var(--text-muted);margin-top:4px;display:block">
+                                    Nếu không có domain nào trong CDN Pool, link video sẽ trỏ về đây.
+                                    Để trống để dùng IP server trực tiếp.
+                                </small>
                             </div>
                         </div>
 
-                        <div style="display:flex;gap:10px;">
+                        <div style="display:flex;gap:10px;margin-top:20px;">
                             <button type="submit" class="btn btn-primary" style="padding:11px 28px;">
                                 💾 <%= server ? 'Lưu thay đổi' : 'Thêm Server' %>
                             </button>

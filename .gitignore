@@ -2,8 +2,3 @@ node_modules/
 .env
 dist/
 *.log
-
-# Generated / local data
-data/
-uploads/
-storage/

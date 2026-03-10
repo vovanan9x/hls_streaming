@@ -48,6 +48,18 @@
                         <span class="nav-icon">👥</span>
                         <span>Tài khoản</span>
                     </a>
+                    <a href="/admin/delete-requests"
+                        class="nav-item<%= typeof title !== 'undefined' && title === 'Yêu cầu Xoá Video' ? ' active' : '' %>"
+                        style="position:relative;">
+                        <span class="nav-icon">🗑️</span>
+                        <span>Yêu cầu Xoá</span>
+                        <% if (typeof pendingDeleteCount !=='undefined' && pendingDeleteCount> 0) { %>
+                            <span
+                                style="position:absolute;top:6px;right:10px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--danger);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;">
+                                <%= pendingDeleteCount %>
+                            </span>
+                            <% } %>
+                    </a>
                     <% } %>
                         <a href="/admin/analytics"
                             class="nav-item<%= typeof title !== 'undefined' && title === 'Thống kê' ? ' active' : '' %>">
@@ -58,6 +70,22 @@
                             <a href="/admin/settings"
                                 class="nav-item<%= typeof title !== 'undefined' && title === 'Cài đặt Hệ thống' ? ' active' : '' %>">
                                 <span class="nav-icon">⚙️</span><span>Cài đặt</span>
+                            </a>
+                            <a href="/admin/api-docs"
+                                class="nav-item<%= typeof title !== 'undefined' && title === 'API Documentation' ? ' active' : '' %>">
+                                <span class="nav-icon">📡</span><span>API Docs</span>
+                            </a>
+                            <a href="/admin/errors"
+                                class="nav-item<%= typeof title !== 'undefined' && title === 'Nhật ký Lỗi' ? ' active' : '' %>">
+                                <span class="nav-icon">🚨</span><span>Nhật ký Lỗi</span>
+                            </a>
+                            <a href="/admin/workers"
+                                class="nav-item<%= typeof title !== 'undefined' && title === 'Encode Workers' ? ' active' : '' %>">
+                                <span class="nav-icon">🔧</span><span>Encode Workers</span>
+                            </a>
+                            <a href="/admin/cdn"
+                                class="nav-item<%= typeof title !== 'undefined' && title === 'CDN Domains (CF Pool)' ? ' active' : '' %>">
+                                <span class="nav-icon">🌐</span><span>CDN Pool</span>
                             </a>
                             <% } %>
                                 <div class="nav-divider"></div>

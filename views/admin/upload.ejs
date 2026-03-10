@@ -9,189 +9,334 @@
                 </div>
                 <% } %>
 
-                    <form action="/admin/upload" method="POST" enctype="multipart/form-data" id="upload-form">
-                        <input type="hidden" name="upload_type" id="upload_type" value="local">
-
-                        <div class="card">
-                            <div class="card-title">Thông tin Video</div>
-                            <br>
-                            <div class="form-group">
-                                <label class="form-label">Tiêu đề *</label>
-                                <input type="text" name="title" class="form-input" placeholder="Nhập tiêu đề video..."
-                                    required>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Mô tả</label>
-                                <textarea name="description" class="form-textarea"
-                                    placeholder="Nhập mô tả cho video..."></textarea>
-                            </div>
+                    <% if (noServers) { %>
+                        <div class="card" style="text-align:center;padding:48px 24px;">
+                            <div style="font-size:56px;margin-bottom:16px;">🖥️</div>
+                            <div style="font-size:20px;font-weight:700;color:var(--text-primary);margin-bottom:10px;">
+                                Chưa có server lưu trữ</div>
+                            <p style="color:var(--text-muted);font-size:14px;max-width:460px;margin:0 auto 24px;">
+                                Để upload video, bạn cần thêm ít nhất một server lưu trữ (SFTP).
+                            </p>
+                            <a href="/admin/servers/add" class="btn btn-primary"
+                                style="padding:12px 28px;font-size:15px;">➕ Thêm Server ngay</a>
                         </div>
+                        <% } else { %>
 
-                        <div class="card">
-                            <div class="card-title">Thumbnail</div>
-                            <br>
-                            <div class="thumb-options">
-                                <div class="thumb-option active">
-                                    <input type="radio" name="thumb_mode" value="auto" checked>
-                                    <label>🤖 Tự động tạo từ video</label>
+                            <form action="/admin/upload" method="POST" enctype="multipart/form-data" id="upload-form">
+                                <input type="hidden" name="upload_type" id="upload_type" value="local">
+
+                                <!-- Card 1: Upload Video -->
+                                <div class="card">
+                                    <div class="card-title">📤 Upload Video</div><br>
+
+                                    <div
+                                        style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                                        <div class="form-group" style="margin:0">
+                                            <label class="form-label">Tiêu đề *</label>
+                                            <input type="text" name="title" class="form-input"
+                                                placeholder="Nhập tiêu đề video..." required>
+                                        </div>
+                                        <div class="form-group" style="margin:0">
+                                            <label class="form-label">Mô tả</label>
+                                            <input type="text" name="description" class="form-input"
+                                                placeholder="Nhập mô tả (tuỳ chọn)...">
+                                        </div>
+                                    </div>
+
+                                    <div class="tabs" style="margin-bottom:12px;">
+                                        <button type="button" class="tab-btn active" data-tab="local">📁 Upload từ
+                                            Local</button>
+                                        <button type="button" class="tab-btn" data-tab="remote">🌐 Remote URL</button>
+                                    </div>
+
+                                    <div id="tab-local" class="tab-content active">
+                                        <div class="dropzone" id="video-dropzone">
+                                            <span class="dropzone-icon">📂</span>
+                                            <div class="dropzone-text">Kéo thả file vào đây hoặc <strong>click để
+                                                    chọn</strong></div>
+                                            <div class="dropzone-hint">MP4, MKV, AVI, MOV, WEBM — Tối đa 10GB</div>
+                                        </div>
+                                        <input type="file" name="video" id="video-file"
+                                            accept=".mp4,.mkv,.avi,.mov,.webm" style="display:none">
+                                        <div id="file-preview" class="file-preview">
+                                            <span>📎</span>
+                                            <span class="file-name"></span>
+                                            <span class="file-size"></span>
+                                            <button type="button" class="file-remove" onclick="removeFile()">✕</button>
+                                        </div>
+                                    </div>
+
+                                    <div id="tab-remote" class="tab-content">
+                                        <div class="form-group" style="margin:0">
+                                            <input type="url" name="remote_url" class="form-input"
+                                                placeholder="https://example.com/video.mp4">
+                                            <small style="color:var(--text-muted);margin-top:4px;display:block">Đường
+                                                dẫn trực tiếp tới file MP4, MKV...</small>
+                                        </div>
+                                    </div>
+
+                                    <!-- Upload Progress (shown during XHR upload) -->
+                                    <div id="upload-progress-wrap" style="display:none;margin-top:16px;">
+                                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                                            <span style="font-size:13px;color:var(--text-secondary);"
+                                                id="upload-status-text">⬆️ Đang gửi file lên server...</span>
+                                            <span style="font-size:13px;font-weight:700;color:var(--accent);"
+                                                id="upload-pct-text">0%</span>
+                                        </div>
+                                        <div
+                                            style="height:8px;background:var(--bg-input);border-radius:4px;overflow:hidden;">
+                                            <div id="upload-progress-fill"
+                                                style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),#a78bfa);border-radius:4px;transition:width 0.3s;">
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="thumb-option">
-                                    <input type="radio" name="thumb_mode" value="upload">
-                                    <label>📁 Upload thumbnail</label>
+
+                                <!-- Card 2: Cài đặt -->
+                                <div class="card">
+                                    <div class="card-title">⚙️ Cài đặt</div><br>
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">
+
+                                        <div style="display:flex;flex-direction:column;gap:14px;">
+                                            <div class="form-group" style="margin:0">
+                                                <label class="form-label">🖥️ Server lưu trữ *</label>
+                                                <select name="server_id" class="form-select" required>
+                                                    <option value="">— Chọn server —</option>
+                                                    <% servers.forEach(function(s) { %>
+                                                        <option value="<%= s.id %>">
+                                                            🖥️ <%= s.label %> (<%= s.ip %>:<%= s.port %>)
+                                                        </option>
+                                                        <% }) %>
+                                                </select>
+                                                <small style="color:var(--text-muted);margin-top:4px;display:block">
+                                                    <a href="/admin/servers/add" style="color:var(--accent)">➕ Thêm
+                                                        server mới</a>
+                                                </small>
+                                            </div>
+
+                                            <div class="form-group" style="margin:0">
+                                                <label class="form-label">🖼️ Thumbnail</label>
+                                                <div class="thumb-options">
+                                                    <div class="thumb-option active">
+                                                        <input type="radio" name="thumb_mode" value="auto" checked>
+                                                        <label>🤖 Tự động từ video</label>
+                                                    </div>
+                                                    <div class="thumb-option">
+                                                        <input type="radio" name="thumb_mode" value="upload">
+                                                        <label>📁 Upload ảnh</label>
+                                                    </div>
+                                                </div>
+                                                <div id="thumb-upload-area" style="display:none;margin-top:8px;">
+                                                    <input type="file" name="thumbnail_file" class="form-input"
+                                                        accept=".png,.jpg,.jpeg,.webp">
+                                                    <small style="color:var(--text-muted)">PNG, JPG, JPEG, WEBP</small>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div style="display:flex;flex-direction:column;gap:14px;">
+                                            <div class="form-group" style="margin:0">
+                                                <label class="form-label">🎬 Chất lượng Render</label>
+                                                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;"
+                                                    id="quality-group">
+                                                    <label class="quality-label" id="ql-sd"
+                                                        style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid var(--accent);border-radius:var(--radius);background:rgba(139,92,246,0.1);transition:var(--transition);">
+                                                        <input type="radio" name="qualities" value="sd"
+                                                            class="quality-rb" checked
+                                                            style="accent-color:var(--accent);width:15px;height:15px;">
+                                                        <span><strong
+                                                                style="color:var(--text-primary);font-size:13px;">SD</strong><small
+                                                                style="color:var(--text-muted);display:block;font-size:11px;">720p
+                                                                · Tiết kiệm</small></span>
+                                                    </label>
+                                                    <label class="quality-label" id="ql-hd"
+                                                        style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid var(--border-color);border-radius:var(--radius);background:var(--bg-input);transition:var(--transition);">
+                                                        <input type="radio" name="qualities" value="hd"
+                                                            class="quality-rb"
+                                                            style="accent-color:var(--accent);width:15px;height:15px;">
+                                                        <span><strong
+                                                                style="color:var(--text-primary);font-size:13px;">HD</strong><small
+                                                                style="color:var(--text-muted);display:block;font-size:11px;">Gốc
+                                                                · Chất lượng cao</small></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group" style="margin:0">
+                                                <label class="form-label">👁️ Quyền xem</label>
+                                                <div style="display:flex;gap:16px;margin-top:6px;">
+                                                    <label
+                                                        style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                                        <input type="radio" name="visibility" value="public" checked
+                                                            style="accent-color:var(--accent)">
+                                                        <span><strong style="color:var(--text-primary)">🌐
+                                                                Public</strong></span>
+                                                    </label>
+                                                    <label
+                                                        style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                                        <input type="radio" name="visibility" value="private"
+                                                            style="accent-color:var(--accent)">
+                                                        <span><strong style="color:var(--text-primary)">🔒
+                                                                Private</strong></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
                                 </div>
-                            </div>
-                            <div id="thumb-upload-area" style="display:none;">
-                                <input type="file" name="thumbnail_file" class="form-input"
-                                    accept=".png,.jpg,.jpeg,.webp">
-                                <small style="color:var(--text-muted)">Hỗ trợ: PNG, JPG, JPEG, WEBP</small>
-                            </div>
-                        </div>
 
-                        <div class="card">
-                            <div class="card-title">Upload Video</div>
-                            <br>
-                            <div class="tabs">
-                                <button type="button" class="tab-btn active" data-tab="local">📁 Upload từ
-                                    Local</button>
-                                <button type="button" class="tab-btn" data-tab="remote">🌐 Remote Upload</button>
-                            </div>
+                                <button type="submit" class="btn btn-primary" id="submit-btn"
+                                    style="padding:12px 32px;font-size:15px;">
+                                    📤 Upload &amp; Xử lý Video
+                                </button>
+                            </form>
 
-                            <div id="tab-local" class="tab-content active">
-                                <div class="dropzone" id="video-dropzone">
-                                    <span class="dropzone-icon">📂</span>
-                                    <div class="dropzone-text">Kéo thả file video vào đây hoặc <strong>click để
-                                            chọn</strong></div>
-                                    <div class="dropzone-hint">Hỗ trợ: MP4, MKV, AVI, MOV, WEBM — Tối đa 10GB</div>
-                                </div>
-                                <input type="file" name="video" id="video-file" accept=".mp4,.mkv,.avi,.mov,.webm"
-                                    style="display:none">
-                                <div id="file-preview" class="file-preview">
-                                    <span>📎</span>
-                                    <span class="file-name"></span>
-                                    <span class="file-size"></span>
-                                    <button type="button" class="file-remove" onclick="removeFile()">✕</button>
-                                </div>
-                            </div>
+                            <% } %>
 
-                            <div id="tab-remote" class="tab-content">
-                                <div class="form-group">
-                                    <label class="form-label">URL Video</label>
-                                    <input type="url" name="remote_url" class="form-input"
-                                        placeholder="https://example.com/video.mp4">
-                                    <small style="color:var(--text-muted);margin-top:4px;display:block">Nhập đường dẫn
-                                        trực tiếp tới file video MP4 hoặc MKV</small>
-                                </div>
-                            </div>
+                                <script>
+                                    (function () {
+                                        var LS_KEY = 'hls_upload_quality';
+                                        var defaultQ = 'sd';
+                                        function getSaved() { return localStorage.getItem(LS_KEY) || defaultQ; }
+                                        function styleLabels() {
+                                            document.querySelectorAll('.quality-rb').forEach(function (rb) {
+                                                var l = rb.closest('.quality-label');
+                                                if (!l) return;
+                                                l.style.borderColor = rb.checked ? 'var(--accent)' : 'var(--border-color)';
+                                                l.style.background = rb.checked ? 'rgba(139,92,246,0.1)' : 'var(--bg-input)';
+                                            });
+                                        }
+                                        // Restore saved
+                                        var saved = getSaved();
+                                        document.querySelectorAll('.quality-rb').forEach(function (rb) {
+                                            rb.checked = (rb.value === saved);
+                                        });
+                                        styleLabels();
+                                        document.querySelectorAll('.quality-rb').forEach(function (rb) {
+                                            rb.addEventListener('change', function () {
+                                                localStorage.setItem(LS_KEY, rb.value);
+                                                styleLabels();
+                                            });
+                                        });
 
-                            <div class="progress-wrap">
-                                <div class="progress-bar">
-                                    <div class="progress-fill"></div>
-                                </div>
-                                <div class="progress-text">0%</div>
-                            </div>
-                        </div>
+                                        var LS_SERVER = 'hls_last_server';
+                                        var serverSel = document.querySelector('select[name="server_id"]');
+                                        if (serverSel) {
+                                            var saved = localStorage.getItem(LS_SERVER);
+                                            if (saved) serverSel.value = saved;
+                                            serverSel.addEventListener('change', function () { localStorage.setItem(LS_SERVER, this.value); });
+                                        }
 
-                        <div class="card">
-                            <div class="card-title">Chọn Server & Quyền truy cập</div>
-                            <br>
-                            <div class="form-group">
-                                <label class="form-label">Server lưu trữ</label>
-                                <select name="server_id" class="form-select">
-                                    <option value="">— Lưu tại Local —</option>
-                                    <% servers.forEach(function(s) { %>
-                                        <option value="<%= s.id %>">
-                                            <%= s.label %> (<%= s.ip %>:<%= s.port %>)
-                                        </option>
-                                        <% }) %>
-                                </select>
-                            </div>
-                            <div class="form-group" style="margin-top:14px">
-                                <label class="form-label">👁️ Quyền xem</label>
-                                <div style="display:flex;gap:16px;margin-top:8px">
-                                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                                        <input type="radio" name="visibility" value="public" checked
-                                            style="accent-color:var(--accent)">
-                                        <span><strong style="color:var(--text-primary)">🌐 Public</strong> <small
-                                                style="color:var(--text-muted)">— Ai cũng xem được</small></span>
-                                    </label>
-                                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                                        <input type="radio" name="visibility" value="private"
-                                            style="accent-color:var(--accent)">
-                                        <span><strong style="color:var(--text-primary)">🔒 Private</strong> <small
-                                                style="color:var(--text-muted)">— Chỉ admin mới xem</small></span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
+                                        // =============================================
+                                        // XHR Upload với Progress Bar thật sự
+                                        // =============================================
+                                        var form = document.getElementById('upload-form');
+                                        var submitBtn = document.getElementById('submit-btn');
+                                        var progressWrap = document.getElementById('upload-progress-wrap');
+                                        var progressFill = document.getElementById('upload-progress-fill');
+                                        var pctText = document.getElementById('upload-pct-text');
+                                        var statusText = document.getElementById('upload-status-text');
 
-                        <div class="card">
-                            <div class="card-title">🎬 Chất lượng Render</div>
-                            <br>
-                            <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Chọn một hoặc nhiều
-                                chất lượng. Nhiều quality = thời gian xử lí lâu hơn.</p>
-                            <div style="display:flex;flex-wrap:wrap;gap:12px;" id="quality-group">
-                                <label
-                                    style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border-color);border-radius:var(--radius);background:var(--bg-input);transition:var(--transition);"
-                                    class="quality-label">
-                                    <input type="checkbox" name="qualities" value="360p" class="quality-cb"
-                                        style="accent-color:var(--accent);width:16px;height:16px;">
-                                    <span><strong style="color:var(--text-primary)">360p</strong><small
-                                            style="color:var(--text-muted);display:block;font-size:11px">640x360 -
-                                            800kbps</small></span>
-                                </label>
-                                <label
-                                    style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border-color);border-radius:var(--radius);background:var(--bg-input);transition:var(--transition);"
-                                    class="quality-label">
-                                    <input type="checkbox" name="qualities" value="480p" class="quality-cb"
-                                        style="accent-color:var(--accent);width:16px;height:16px;">
-                                    <span><strong style="color:var(--text-primary)">480p</strong><small
-                                            style="color:var(--text-muted);display:block;font-size:11px">854x480 -
-                                            1.4Mbps</small></span>
-                                </label>
-                                <label
-                                    style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border-color);border-radius:var(--radius);background:var(--bg-input);transition:var(--transition);"
-                                    class="quality-label">
-                                    <input type="checkbox" name="qualities" value="720p" class="quality-cb"
-                                        style="accent-color:var(--accent);width:16px;height:16px;">
-                                    <span><strong style="color:var(--text-primary)">720p</strong><small
-                                            style="color:var(--text-muted);display:block;font-size:11px">1280x720 -
-                                            2.8Mbps</small></span>
-                                </label>
-                                <label
-                                    style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border-color);border-radius:var(--radius);background:var(--bg-input);transition:var(--transition);"
-                                    class="quality-label">
-                                    <input type="checkbox" name="qualities" value="1080p" class="quality-cb"
-                                        style="accent-color:var(--accent);width:16px;height:16px;">
-                                    <span><strong style="color:var(--text-primary)">1080p</strong><small
-                                            style="color:var(--text-muted);display:block;font-size:11px">1920x1080 -
-                                            5Mbps</small></span>
-                                </label>
-                            </div>
-                        </div>
+                                        if (form) {
+                                            form.addEventListener('submit', function (e) {
+                                                // Chỉ dùng XHR cho local file upload
+                                                var uploadType = document.getElementById('upload_type').value;
+                                                if (uploadType !== 'local') return; // remote URL: form submit bình thường
+                                                var fileInput = document.getElementById('video-file');
+                                                if (!fileInput || !fileInput.files || fileInput.files.length === 0) return;
 
-                        <button type="submit" class="btn btn-primary" style="padding:12px 32px;font-size:15px;">
-                            📤 Upload &amp; Xử lý Video
-                        </button>
-                    </form>
+                                                e.preventDefault(); // Block form submit
 
-                    <script>
-                        (function () {
-                            var LS_KEY = 'hls_upload_qualities';
-                            var defaults = ['720p'];
-                            function getSaved() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || defaults; } catch (e) { return defaults; } }
-                            function style(cb) {
-                                var l = cb.closest('.quality-label');
-                                if (l) { l.style.borderColor = cb.checked ? 'var(--accent)' : 'var(--border-color)'; l.style.background = cb.checked ? 'rgba(139,92,246,0.1)' : 'var(--bg-input)'; }
-                            }
-                            function save() {
-                                var sel = []; document.querySelectorAll('.quality-cb:checked').forEach(function (c) { sel.push(c.value); });
-                                if (!sel.length) { sel = defaults; apply(sel); }
-                                localStorage.setItem(LS_KEY, JSON.stringify(sel));
-                            }
-                            function apply(arr) { document.querySelectorAll('.quality-cb').forEach(function (c) { c.checked = arr.indexOf(c.value) !== -1; style(c); }); }
-                            apply(getSaved());
-                            document.querySelectorAll('.quality-cb').forEach(function (c) { c.addEventListener('change', function () { style(c); save(); }); });
-                        })();
-                    </script>
+                                                var fd = new FormData(form);
+                                                var xhr = new XMLHttpRequest();
 
-                    <%- include('../partials/footer') %>
+                                                // Show progress bar
+                                                progressWrap.style.display = 'block';
+                                                submitBtn.disabled = true;
+                                                submitBtn.textContent = '⬆️ Đang upload...';
+
+                                                xhr.upload.addEventListener('progress', function (ev) {
+                                                    if (ev.lengthComputable) {
+                                                        var pct = Math.round((ev.loaded / ev.total) * 100);
+                                                        progressFill.style.width = pct + '%';
+                                                        pctText.textContent = pct + '%';
+                                                        if (pct >= 100) {
+                                                            statusText.textContent = '⚙️ Server đang xử lý...';
+                                                            pctText.textContent = '✅ Xong!';
+                                                        }
+                                                    }
+                                                });
+
+                                                xhr.addEventListener('load', function () {
+                                                    // Server trả về HTML (render lại trang)
+                                                    // Thay thế toàn bộ document
+                                                    document.open();
+                                                    document.write(xhr.responseText);
+                                                    document.close();
+                                                });
+
+                                                xhr.addEventListener('error', function () {
+                                                    progressWrap.style.display = 'none';
+                                                    submitBtn.disabled = false;
+                                                    submitBtn.textContent = '📤 Upload & Xử lý Video';
+                                                    alert('Lỗi kết nối! Kiểm tra lại file và thử lại.');
+                                                });
+
+                                                xhr.open('POST', '/admin/upload');
+                                                xhr.send(fd);
+                                            });
+                                        }
+
+                                        // Tab switching
+                                        document.querySelectorAll('.tab-btn').forEach(function (btn) {
+                                            btn.addEventListener('click', function () {
+                                                var tab = btn.dataset.tab;
+                                                document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+                                                document.querySelectorAll('.tab-content').forEach(function (c) { c.classList.remove('active'); });
+                                                btn.classList.add('active');
+                                                var tc = document.getElementById('tab-' + tab);
+                                                if (tc) tc.classList.add('active');
+                                                document.getElementById('upload_type').value = tab;
+                                            });
+                                        });
+
+                                        // Dropzone
+                                        var dz = document.getElementById('video-dropzone');
+                                        var fi = document.getElementById('video-file');
+                                        if (dz && fi) {
+                                            dz.addEventListener('click', function () { fi.click(); });
+                                            dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.style.borderColor = 'var(--accent)'; });
+                                            dz.addEventListener('dragleave', function () { dz.style.borderColor = ''; });
+                                            dz.addEventListener('drop', function (e) {
+                                                e.preventDefault(); dz.style.borderColor = '';
+                                                if (e.dataTransfer.files[0]) {
+                                                    fi.files = e.dataTransfer.files;
+                                                    showPreview(e.dataTransfer.files[0]);
+                                                }
+                                            });
+                                            fi.addEventListener('change', function () {
+                                                if (fi.files[0]) showPreview(fi.files[0]);
+                                            });
+                                        }
+
+                                        function showPreview(f) {
+                                            var prev = document.getElementById('file-preview');
+                                            if (!prev) return;
+                                            prev.style.display = 'flex';
+                                            prev.querySelector('.file-name').textContent = f.name;
+                                            var mb = (f.size / 1024 / 1024).toFixed(1);
+                                            prev.querySelector('.file-size').textContent = mb + ' MB';
+                                        }
+
+                                        window.removeFile = function () {
+                                            var fi = document.getElementById('video-file');
+                                            if (fi) fi.value = '';
+                                            var prev = document.getElementById('file-preview');
+                                            if (prev) prev.style.display = 'none';
+                                        };
+
+                                    })();
+                                </script>
+
+                                <%- include('../partials/footer') %>

@@ -9,51 +9,18 @@
                 </div>
                 <% } %>
 
-                    <div class="card">
-                        <div class="card-title">☁️ Cloudflare R2 Storage</div><br>
-                        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-                            Sau khi cấu hình, video sẽ tự động upload lên R2 sau khi encode.
-                            CDN URL sẽ được lưu làm <code>m3u8_url</code>.
-                            <% if (r2Configured) { %><span style="color:#34d399;margin-left:8px">✅ Đang kết nối</span>
-                                <% } else { %><span style="color:#f87171;margin-left:8px">⛔ Chưa cấu hình</span>
-                                    <% } %>
+                    <!-- R2 & SFTP đã chuyển sang Quản lí Server -->
+                    <div class="card" style="margin-bottom:20px;">
+                        <div class="card-title">🖥️ Quản lí Server lưu trữ</div>
+                        <br>
+                        <p style="font-size:14px;color:var(--text-muted);margin-bottom:16px;">
+                            Server SFTP (Hetzner, VPS...) và Cloudflare R2 được quản lý tập trung tại mục <strong>Quản
+                                lí Server</strong>.
+                            Mỗi server có thể được chọn riêng biệt khi upload video.
                         </p>
-                        <form action="/admin/settings/r2" method="POST">
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                                <div class="form-group">
-                                    <label class="form-label">Account ID</label>
-                                    <input type="text" name="r2_account_id" class="form-input"
-                                        value="<%= r2Cfg.accountId || '' %>" placeholder="abc123...">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Bucket Name</label>
-                                    <input type="text" name="r2_bucket" class="form-input"
-                                        value="<%= r2Cfg.bucket || '' %>" placeholder="my-hls-bucket">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Access Key ID</label>
-                                    <input type="text" name="r2_access_key" class="form-input"
-                                        value="<%= r2Cfg.accessKeyId || '' %>" placeholder="Access Key">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Secret Access Key</label>
-                                    <input type="password" name="r2_secret_key" class="form-input"
-                                        placeholder="Secret Key (để trống = không đổi)" autocomplete="off">
-                                </div>
-                                <div class="form-group" style="grid-column:1/-1">
-                                    <label class="form-label">Public CDN URL</label>
-                                    <input type="url" name="r2_public_url" class="form-input"
-                                        value="<%= r2Cfg.publicUrl || '' %>" placeholder="https://cdn.yourdomain.com">
-                                    <small style="color:var(--text-muted)">Domain CDN trỏ vào R2 bucket của bạn (không
-                                        có dấu / cuối)</small>
-                                </div>
-                            </div>
-                            <div style="display:flex;gap:10px;margin-top:16px;">
-                                <button type="submit" class="btn btn-primary">💾 Lưu cấu hình R2</button>
-                                <button type="button" class="btn btn-ghost" id="test-r2-btn">🔌 Test kết nối</button>
-                            </div>
-                        </form>
-                        <div id="r2-test-result" style="margin-top:12px;font-size:13px;display:none;"></div>
+                        <a href="/admin/servers" class="btn btn-primary" style="margin-right:10px;">🖥️ Quản lí
+                            Server</a>
+                        <a href="/admin/servers/add" class="btn btn-ghost">➕ Thêm Server mới</a>
                     </div>
 
                     <div class="card" style="margin-top:20px">
@@ -116,17 +83,6 @@
                     </div>
 
                     <script>
-                        document.getElementById('test-r2-btn').addEventListener('click', function () {
-                            const btn = this, result = document.getElementById('r2-test-result');
-                            btn.textContent = '⏳ Đang test...'; btn.disabled = true;
-                            fetch('/admin/settings/r2/test', { method: 'POST' })
-                                .then(r => r.json()).then(data => {
-                                    result.style.display = 'block';
-                                    result.innerHTML = data.ok
-                                        ? '<span style="color:#34d399">✅ ' + data.message + '</span>'
-                                        : '<span style="color:#f87171">❌ ' + data.message + '</span>';
-                                }).finally(() => { btn.textContent = '🔌 Test kết nối'; btn.disabled = false; });
-                        });
                         function copyToken() {
                             navigator.clipboard.writeText(document.getElementById('token-text').textContent);
                             event.target.textContent = '✅'; setTimeout(() => { event.target.textContent = '📋 Copy'; }, 1500);
