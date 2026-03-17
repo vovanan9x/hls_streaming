@@ -181,6 +181,7 @@
     <button class="guide-tab" onclick="switchTab('server')">🖥️ Storage Server</button>
     <button class="guide-tab" onclick="switchTab('worker')">⚙️ Encode Workers</button>
     <button class="guide-tab" onclick="switchTab('cdn')">☁️ CDN</button>
+    <button class="guide-tab" onclick="switchTab('deploy')">🚀 Deploy</button>
     <button class="guide-tab" onclick="switchTab('api')">🔌 API Reference</button>
   </div>
 
@@ -573,6 +574,181 @@ Edge Cache TTL: 2 minutes</pre>
 
     <div class="warn-box">
       ⚠️ HLS link trong database sẽ tự động được thay bằng CDN URL khi phát. Đảm bảo CDN URL không có trailing slash.
+    </div>
+  </div>
+
+  <!-- ─── TAB: DEPLOY ─── -->
+  <div id="tab-deploy" class="guide-section">
+    <div class="info-box">
+      <strong style="color:var(--accent);">Deploy & Cập nhật code</strong> — Hướng dẫn đưa source code App Server lên production bằng Git. Push code từ máy local → Git repo → Pull trên server → Restart PM2.
+    </div>
+
+    <!-- Architecture -->
+    <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;">
+      <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:var(--text-primary);">📡 Luồng Deploy</div>
+      <div class="arch-diagram">
+        <div class="arch-node">💻 Máy Local<br><small style="font-weight:400;color:#8888aa;">Code & Commit</small></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">📦 Git Remote<br><small style="font-weight:400;color:#8888aa;">GitHub / GitLab</small></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node" style="border-color:rgba(34,197,94,0.5);background:rgba(34,197,94,0.08);">🖥️ App Server<br><small style="font-weight:400;color:#22c55e;">git pull → pm2 restart</small></div>
+      </div>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="step-title"><span class="step-num">1</span>Lần đầu: Clone repo lên App Server</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">SSH vào App Server và clone source code:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># SSH vào App Server</span>
+ssh root@<span class="string">&lt;APP_SERVER_IP&gt;</span>
+
+<span class="comment"># Cài Git + Node.js (nếu chưa có)</span>
+apt update && apt install -y git
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs
+
+<span class="comment"># Clone repo</span>
+cd /opt
+git clone <span class="string">&lt;GIT_REPO_URL&gt;</span> hls-app
+cd hls-app
+
+<span class="comment"># Cài dependencies</span>
+npm install
+
+<span class="comment"># Tạo file .env (cấu hình riêng cho server)</span>
+nano .env
+
+<span class="comment"># Chạy bằng PM2</span>
+npm install -g pm2
+pm2 start index.js --name hls-app
+pm2 save && pm2 startup</pre>
+
+    <div class="warn-box">
+      ⚠️ File <code>.env</code> và <code>data/database.sqlite</code> là dữ liệu riêng của server, <strong>không nên commit lên git</strong>. Đảm bảo chúng nằm trong <code>.gitignore</code>.
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step-title"><span class="step-num">2</span>Push code từ máy local lên Git</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Trên máy local (Windows), commit và push thay đổi:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Di chuyển vào thư mục project</span>
+cd d:\nodejs
+
+<span class="comment"># Xem file đã thay đổi</span>
+git status
+
+<span class="comment"># Thêm tất cả thay đổi</span>
+git add .
+
+<span class="comment"># Commit với mô tả ngắn</span>
+git commit -m <span class="string">"fix: upload progress + worker guide"</span>
+
+<span class="comment"># Push lên remote (branch main)</span>
+git push origin main</pre>
+
+    <!-- Step 3 -->
+    <div class="step-title"><span class="step-num">3</span>Pull code mới trên App Server & Restart</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">SSH vào App Server, pull code mới và restart:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># SSH vào App Server</span>
+ssh root@<span class="string">&lt;APP_SERVER_IP&gt;</span>
+
+<span class="comment"># Pull code mới</span>
+cd /opt/hls-app
+git pull origin main
+
+<span class="comment"># Cài package mới (nếu package.json thay đổi)</span>
+npm install
+
+<span class="comment"># Restart app</span>
+pm2 restart hls-app
+
+<span class="comment"># Kiểm tra logs</span>
+pm2 logs hls-app --lines 20</pre>
+
+    <div class="info-box">
+      Nếu thấy <code>🎬 HLS Streaming Server đang chạy tại http://localhost:3000</code> trong logs → Deploy thành công! ✅
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step-title"><span class="step-num">4</span>Xử lý conflict khi pull</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Nếu <code>git pull</code> báo conflict (do file trên server bị sửa tay):</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Cách 1: Giữ code từ git, bỏ thay đổi local trên server</span>
+git stash           <span class="comment"># Lưu tạm thay đổi local</span>
+git pull origin main
+git stash drop      <span class="comment"># Bỏ thay đổi local cũ</span>
+
+<span class="comment"># Cách 2: Ép buộc ghi đè bằng code từ git (mất hết thay đổi local)</span>
+git fetch origin
+git reset --hard origin/main
+
+<span class="comment"># Sau khi xử lý conflict, restart lại</span>
+npm install
+pm2 restart hls-app</pre>
+
+    <div class="warn-box">
+      ⚠️ <code>git reset --hard</code> sẽ <strong>xoá hết</strong> thay đổi local trên server! Chỉ dùng khi bạn chắc chắn không cần giữ lại code sửa tay trên server.
+    </div>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid var(--border);margin:28px 0;"></div>
+
+    <!-- Quick deploy -->
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">⚡ Lệnh deploy nhanh (1 dòng)</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Copy lệnh này để deploy nhanh trên App Server:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Deploy 1 dòng — pull + install + restart</span>
+cd /opt/hls-app && git pull origin main && npm install && pm2 restart hls-app</pre>
+
+    <p style="font-size:13px;color:#b0b0d0;margin:12px 0 8px;">Hoặc chạy từ máy local mà không cần SSH thủ công:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Chạy từ máy local (Windows PowerShell)</span>
+ssh root@<span class="string">&lt;APP_SERVER_IP&gt;</span> "cd /opt/hls-app && git pull origin main && npm install && pm2 restart hls-app"</pre>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid var(--border);margin:28px 0;"></div>
+
+    <!-- Rollback -->
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">⏪ Rollback (quay lại phiên bản cũ)</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Nếu deploy bị lỗi, quay lại commit trước:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Xem lịch sử commit</span>
+git log --oneline -10
+
+<span class="comment"># Quay lại commit cụ thể</span>
+git checkout <span class="string">&lt;COMMIT_HASH&gt;</span>
+npm install
+pm2 restart hls-app
+
+<span class="comment"># Hoặc quay lại commit trước đó 1 bước</span>
+git checkout HEAD~1
+npm install
+pm2 restart hls-app
+
+<span class="comment"># Khi đã fix xong, quay lại branch main</span>
+git checkout main</pre>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid var(--border);margin:28px 0;"></div>
+
+    <!-- Git commands ref -->
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">📘 Lệnh Git thường dùng</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>git status                          <span class="comment"># Xem file đã thay đổi</span>
+git diff                            <span class="comment"># Xem chi tiết thay đổi</span>
+git log --oneline -10               <span class="comment"># Xem 10 commit gần nhất</span>
+git add .                           <span class="comment"># Stage tất cả thay đổi</span>
+git commit -m "mô tả"               <span class="comment"># Commit</span>
+git push origin main                <span class="comment"># Push lên remote</span>
+git pull origin main                <span class="comment"># Pull code mới về</span>
+git stash                           <span class="comment"># Lưu tạm thay đổi chưa commit</span>
+git stash pop                       <span class="comment"># Khôi phục thay đổi đã stash</span>
+git reset --hard origin/main        <span class="comment"># Ép reset về code trên remote</span></pre>
+
+    <!-- .gitignore -->
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin:24px 0 14px;">📄 .gitignore khuyến nghị</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>node_modules/
+.env
+data/
+uploads/
+storage/
+*.sqlite
+*.log</pre>
+    <div style="font-size:12px;color:#8888aa;margin-top:4px;padding:0 4px;">
+      Các thư mục <code>data/</code>, <code>uploads/</code>, <code>storage/</code> chứa dữ liệu runtime — không nên track trong git.
     </div>
   </div>
 
