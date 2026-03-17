@@ -37,15 +37,7 @@ router.get('/embed/:videoId', (req, res) => {
         });
     }
 
-    let m3u8Url = video.m3u8_url;
-    // URL ngoài (R2, CDN): dùng proxy để tránh CORS khi phát từ localhost
-    if (m3u8Url.startsWith('http://') || m3u8Url.startsWith('https://')) {
-        try {
-            const u = new URL(m3u8Url);
-            allowDomain(u.hostname);
-        } catch (_) {}
-        m3u8Url = '/proxy/hls?url=' + encodeURIComponent(m3u8Url);
-    }
+    const m3u8Url = video.m3u8_url;
 
     res.render('user/player', {
         title: video.title,
@@ -70,14 +62,7 @@ router.get('/play', (req, res) => {
         });
     }
 
-    let m3u8Url = url;
-    if (m3u8Url.startsWith('http://') || m3u8Url.startsWith('https://')) {
-        try {
-            const u = new URL(m3u8Url);
-            allowDomain(u.hostname);
-        } catch (_) {}
-        m3u8Url = '/proxy/hls?url=' + encodeURIComponent(m3u8Url);
-    }
+    const m3u8Url = url;
 
     res.render('user/player', {
         title: 'HLS Player',
