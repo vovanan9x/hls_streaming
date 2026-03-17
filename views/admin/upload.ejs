@@ -207,50 +207,35 @@
   </div>
 </form>
 
-<!-- ── Upload Progress Overlay ── -->
-<div id="upload-overlay" style="display:none;opacity:0;position:fixed;inset:0;z-index:10000;background:rgba(10,10,20,0.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);align-items:center;justify-content:center;transition:opacity 0.3s;">
-  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:18px;padding:40px 48px;min-width:420px;max-width:560px;width:90%;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,0.6);">
-
-    <!-- Icon + Phase -->
-    <div style="margin-bottom:20px;">
-      <div style="width:64px;height:64px;margin:0 auto 14px;background:rgba(139,92,246,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:30px;height:30px;color:var(--accent);">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
+<!-- ── Upload Progress Bar (fixed bottom, non-blocking) ── -->
+<div id="upload-overlay" style="display:none;opacity:0;position:fixed;bottom:0;left:0;right:0;z-index:10000;transition:opacity 0.3s,transform 0.3s;transform:translateY(100%);">
+  <div style="background:var(--bg-card);border-top:1px solid var(--border);box-shadow:0 -8px 40px rgba(0,0,0,0.4);padding:14px 24px;">
+    <div style="max-width:1200px;margin:0 auto;">
+      <!-- Row 1: Phase + Cancel -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+          <div id="ov-phase" style="font-size:13px;color:var(--text-secondary);font-weight:600;">Đang gửi file lên server...</div>
+          <div id="ov-filename" style="font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;"></div>
+        </div>
+        <button type="button" id="ov-cancel-btn" onclick="cancelUpload()" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:6px 16px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.25)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Huỷ
+        </button>
       </div>
-      <div id="ov-phase" style="font-size:13.5px;color:var(--text-secondary);">Đang gửi file lên server...</div>
-    </div>
-
-    <!-- Big percentage -->
-    <div style="font-size:56px;font-weight:800;color:var(--text-primary);line-height:1;margin-bottom:6px;letter-spacing:-2px;">
-      <span id="ov-pct">0</span><span style="font-size:28px;font-weight:700;color:var(--accent);">%</span>
-    </div>
-
-    <!-- Progress bar -->
-    <div style="background:rgba(255,255,255,0.07);border-radius:100px;height:8px;margin:18px 0 22px;overflow:hidden;">
-      <div id="ov-bar-fill" style="height:100%;width:0%;border-radius:100px;background:linear-gradient(90deg,var(--accent),#a78bfa);transition:width 0.4s ease;"></div>
-    </div>
-
-    <!-- File name -->
-    <div id="ov-filename" style="font-size:13px;color:var(--text-primary);font-weight:600;margin-bottom:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;"></div>
-
-    <!-- Stats row -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-      <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:12px 8px;">
-        <div style="font-size:10px;color:var(--text-muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Tốc độ</div>
-        <div id="ov-speed" style="font-size:15px;font-weight:700;color:var(--text-primary);">—</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:12px 8px;">
-        <div style="font-size:10px;color:var(--text-muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Còn lại</div>
-        <div id="ov-eta" style="font-size:15px;font-weight:700;color:var(--text-primary);">—</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:12px 8px;">
-        <div style="font-size:10px;color:var(--text-muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Đã gửi</div>
-        <div id="ov-transferred" style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;">0 B / —</div>
+      <!-- Row 2: Progress bar + stats -->
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="flex:1;background:rgba(255,255,255,0.07);border-radius:100px;height:6px;overflow:hidden;">
+          <div id="ov-bar-fill" style="height:100%;width:0%;border-radius:100px;background:linear-gradient(90deg,var(--accent),#a78bfa);transition:width 0.4s ease;"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;flex-shrink:0;">
+          <span style="font-size:22px;font-weight:800;color:var(--text-primary);min-width:52px;text-align:right;" id="ov-pct-wrap"><span id="ov-pct">0</span><span style="font-size:13px;color:var(--accent);font-weight:700;">%</span></span>
+          <span style="color:var(--border);font-size:14px;">│</span>
+          <span style="font-size:11.5px;color:var(--text-muted);" id="ov-speed">—</span>
+          <span style="font-size:11.5px;color:var(--text-muted);" id="ov-eta">—</span>
+          <span style="font-size:11.5px;color:var(--text-muted);" id="ov-transferred">0 B / —</span>
+        </div>
       </div>
     </div>
-
-    <div style="margin-top:18px;font-size:11.5px;color:var(--text-muted);">Vui lòng không tắt trang trong quá trình upload</div>
   </div>
 </div>
 
@@ -365,6 +350,10 @@
     window.location.href = '/admin/upload';
   }
 
+  // Track active XHR for cancel
+  var activeXhr = null;
+  var activePollInterval = null;
+
   function showUploadOverlay(fileName) {
     var ov = document.getElementById('upload-overlay');
     document.getElementById('ov-filename').textContent = fileName;
@@ -376,8 +365,32 @@
     document.getElementById('ov-transferred').textContent = '0 B / —';
     document.getElementById('ov-phase').textContent = 'Đang gửi file lên server...';
     document.getElementById('ov-phase').style.color = 'var(--text-secondary)';
-    ov.style.display = 'flex';
-    requestAnimationFrame(function () { ov.style.opacity = '1'; });
+    document.getElementById('ov-cancel-btn').style.display = 'flex';
+    ov.style.display = 'block';
+    requestAnimationFrame(function () {
+      ov.style.opacity = '1';
+      ov.style.transform = 'translateY(0)';
+    });
+  }
+
+  function hideUploadOverlay() {
+    var ov = document.getElementById('upload-overlay');
+    ov.style.opacity = '0';
+    ov.style.transform = 'translateY(100%)';
+    setTimeout(function () { ov.style.display = 'none'; }, 300);
+  }
+
+  function cancelUpload() {
+    if (!confirm('Bạn có chắc muốn huỷ upload?')) return;
+    stopPulseAnimation();
+    if (activePollInterval) { clearInterval(activePollInterval); activePollInterval = null; }
+    if (activeXhr) {
+      try { activeXhr.abort(); } catch (e) { /* ignore */ }
+      activeXhr = null;
+    }
+    hideUploadOverlay();
+    submitBtn.disabled = false;
+    showToast('info', 'Đã huỷ upload.');
   }
 
   function updateOverlay(pct, loaded, total, speed, eta, phase) {
@@ -390,8 +403,9 @@
     document.getElementById('ov-eta').textContent = eta;
     document.getElementById('ov-transferred').textContent = fmtBytes(loaded) + ' / ' + fmtBytes(total);
     if (phase === 'processing') {
-      document.getElementById('ov-phase').textContent = '⚙️ Server đang xử lý & encode...';
+      document.getElementById('ov-phase').textContent = '⚙️ Đang xử lý & thêm vào hàng đợi...';
       document.getElementById('ov-phase').style.color = '#34d399';
+      document.getElementById('ov-cancel-btn').style.display = 'none';
     }
   }
 
@@ -427,6 +441,7 @@
 
         var fd = new FormData(form);
         var xhr = new XMLHttpRequest();
+        activeXhr = xhr;
         var startTime = Date.now();
         var lastLoaded = 0;
         var lastTime = startTime;
@@ -450,8 +465,8 @@
         });
 
         xhr.addEventListener('error', function () {
-          document.getElementById('upload-overlay').style.opacity = '0';
-          setTimeout(function () { document.getElementById('upload-overlay').style.display = 'none'; }, 300);
+          activeXhr = null;
+          hideUploadOverlay();
           submitBtn.disabled = false;
           showToast('error', 'Lỗi kết nối! Kiểm tra file và thử lại.');
         });
@@ -489,10 +504,11 @@
         var fd2 = new FormData(form);
         fd2.append('download_track_id', trackId);
         var xhr2 = new XMLHttpRequest();
+        activeXhr = xhr2;
         var pollDone = false;
 
         // Poll download progress from server
-        var progressPoll = setInterval(function () {
+        activePollInterval = setInterval(function () {
           if (pollDone) return;
           var pxhr = new XMLHttpRequest();
           pxhr.open('GET', '/admin/upload/download-progress?trackId=' + encodeURIComponent(trackId));
@@ -530,9 +546,10 @@
         xhr2.addEventListener('error', function () {
           pollDone = true;
           clearInterval(progressPoll);
+          activePollInterval = null;
+          activeXhr = null;
           stopPulseAnimation();
-          document.getElementById('upload-overlay').style.opacity = '0';
-          setTimeout(function () { document.getElementById('upload-overlay').style.display = 'none'; }, 300);
+          hideUploadOverlay();
           submitBtn.disabled = false;
           showToast('error', 'Lỗi kết nối! Kiểm tra URL và thử lại.');
         });

@@ -1468,6 +1468,7 @@ router.post('/workers/:idx/delete', requireAdmin, (req, res) => {
 
 /** POST /admin/api/worker/progress — Worker báo progress về */
 router.post('/api/worker/progress', (req, res) => {
+    console.log(`[Worker Callback] Progress received: videoId=${req.body.videoId} progress=${req.body.progress} token=${(req.headers['x-worker-token'] || '').substring(0, 8)}...`);
     const token = req.headers['x-worker-token'];
     const workers = workerPool.getWorkers();
     const valid = workers.some(w => w.token === token);
@@ -1484,6 +1485,7 @@ router.post('/api/worker/progress', (req, res) => {
 
 /** POST /admin/api/worker/done — Worker báo encode thành công */
 router.post('/api/worker/done', (req, res) => {
+    console.log(`[Worker Callback] DONE received: videoId=${req.body.videoId} thumbnail=${req.body.thumbnailName} token=${(req.headers['x-worker-token'] || '').substring(0, 8)}...`);
     const token = req.headers['x-worker-token'];
     const workers = workerPool.getWorkers();
     const valid = workers.some(w => w.token === token);

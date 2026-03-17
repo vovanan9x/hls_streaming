@@ -376,28 +376,45 @@ function writeMasterPlaylist(outputDir, qualities) {
 
 /** Báo progress về App server */
 async function reportProgress(videoId, progress, callbackToken) {
+    const url = `${APP_URL}/admin/api/worker/progress`;
+    const token = callbackToken || WORKER_TOKEN;
     try {
-        await axios.post(`${APP_URL}/admin/api/worker/progress`, { videoId, progress }, {
-            headers: { 'x-worker-token': callbackToken || WORKER_TOKEN },
+        await axios.post(url, { videoId, progress }, {
+            headers: { 'x-worker-token': token },
             timeout: 5000,
         });
     } catch (e) {
-        console.error('[Worker] Không thể báo progress:', e.message);
+        const status = e.response ? e.response.status : 'no response';
+        const body = e.response ? JSON.stringify(e.response.data) : '';
+        console.error(`[Worker] Không thể báo progress: ${e.message} | URL=${url} | status=${status} | body=${body}`);
     }
 }
 
-/** Báo kết quả cuối về App server */
+/** Báo kết quả cuối về App server (có retry 3 lần) */
 async function reportDone(videoId, ok, m3u8Url, thumbnailName, error, callbackToken) {
-    try {
-        await axios.post(`${APP_URL}/admin/api/worker/${ok ? 'done' : 'error'}`, {
-            videoId, m3u8Url, thumbnailName, error
-        }, {
-            headers: { 'x-worker-token': callbackToken || WORKER_TOKEN },
-            timeout: 10000,
-        });
-    } catch (e) {
-        console.error('[Worker] Không thể báo done/error:', e.message);
+    const endpoint = ok ? 'done' : 'error';
+    const url = `${APP_URL}/admin/api/worker/${endpoint}`;
+    const token = callbackToken || WORKER_TOKEN;
+    const data = { videoId, m3u8Url, thumbnailName, error };
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const resp = await axios.post(url, data, {
+                headers: { 'x-worker-token': token },
+                timeout: 10000,
+            });
+            console.log(`[Worker] reportDone(${endpoint}) success for videoId=${videoId} (attempt ${attempt}), response:`, resp.data);
+            return; // thành công → exit
+        } catch (e) {
+            const status = e.response ? e.response.status : 'no response';
+            const body = e.response ? JSON.stringify(e.response.data) : '';
+            console.error(`[Worker] reportDone(${endpoint}) FAILED attempt ${attempt}/3: ${e.message} | URL=${url} | token=${token ? token.substring(0, 8) + '...' : 'EMPTY'} | status=${status} | body=${body}`);
+            if (attempt < 3) {
+                await new Promise(r => setTimeout(r, 2000)); // chờ 2s rồi thử lại
+            }
+        }
     }
+    console.error(`[Worker] reportDone(${endpoint}) ALL 3 ATTEMPTS FAILED for videoId=${videoId}! App DB sẽ không cập nhật.`);
 }
 
 /**
