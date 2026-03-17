@@ -137,7 +137,7 @@
 
       <% if (video.thumbnail) { %>
         <div class="preview-thumb">
-          <img src="/uploads/thumbnails/<%= video.thumbnail %>" alt="Thumbnail">
+          <img src="<%= video.thumbnail.startsWith('http') ? video.thumbnail : '/uploads/thumbnails/' + video.thumbnail %>" alt="Thumbnail">
         </div>
       <% } else { %>
         <div class="preview-thumb-placeholder">

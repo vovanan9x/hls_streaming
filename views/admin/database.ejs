@@ -1,0 +1,348 @@
+<%- include('../partials/header') %>
+
+<style>
+  .db-grid { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+  .db-tables { display: flex; flex-direction: column; gap: 4px; }
+  .db-table-btn {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    background: transparent; border: 1px solid transparent; color: var(--text-secondary);
+    transition: all 0.15s;
+  }
+  .db-table-btn:hover { background: rgba(139,92,246,0.06); border-color: rgba(139,92,246,0.15); color: var(--text-primary); }
+  .db-table-btn.active { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.3); color: var(--accent); font-weight: 600; }
+  .db-table-btn .count { font-size: 11px; background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 10px; color: var(--text-muted); }
+  .db-table-btn.active .count { background: rgba(139,92,246,0.15); color: var(--accent); }
+  .db-result-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .db-result-table th { background: rgba(255,255,255,0.03); color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; }
+  .db-result-table td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); color: var(--text-secondary); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .db-result-table tr:hover td { background: rgba(139,92,246,0.04); color: var(--text-primary); }
+  .db-result-table td.null-val { color: var(--text-muted); font-style: italic; }
+  .sql-editor { width: 100%; min-height: 80px; resize: vertical; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: var(--text-primary); line-height: 1.6; }
+  .sql-editor:focus { outline: none; border-color: var(--accent); }
+  .sql-toolbar { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .db-stat { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 12px; color: var(--text-muted); }
+  .db-stat strong { color: var(--accent); font-weight: 700; }
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab-btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; background: transparent; color: var(--text-muted); transition: all 0.15s; }
+  .tab-btn:hover { color: var(--text-primary); background: rgba(255,255,255,0.03); }
+  .tab-btn.active { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.3); color: var(--accent); }
+  .db-tab { display: none; }
+  .db-tab.active { display: block; }
+  .result-scroll { max-height: 500px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .schema-col { display: grid; grid-template-columns: 120px 100px 1fr; gap: 0; font-size: 12.5px; }
+  .schema-col > div { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+  .schema-col .col-name { color: var(--text-primary); font-weight: 500; }
+  .schema-col .col-type { color: var(--accent); font-family: monospace; font-size: 11px; }
+  .schema-col .col-extra { color: var(--text-muted); font-size: 11px; }
+  .schema-col .header { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(255,255,255,0.02); font-weight: 600; }
+  #sql-result-msg { margin-top: 10px; font-size: 12.5px; padding: 8px 12px; border-radius: 6px; display: none; }
+  .db-danger { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; padding: 14px; margin-top: 20px; }
+  .db-danger-title { font-weight: 700; font-size: 13px; color: #ef4444; margin-bottom: 8px; }
+  @media (max-width: 768px) { .db-grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+      </svg>
+      Quản lí Database
+    </div>
+    <div style="display:flex;gap:10px;">
+      <div class="db-stat">Kích thước: <strong><%= dbInfo.size %></strong></div>
+      <div class="db-stat">Bảng: <strong><%= dbInfo.tableCount %></strong></div>
+      <div class="db-stat">WAL: <strong><%= dbInfo.walMode %></strong></div>
+    </div>
+  </div>
+</div>
+
+<div class="db-grid">
+  <!-- Tables sidebar -->
+  <div>
+    <div class="card" style="padding:12px;">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:10px;padding:0 4px;">📦 Bảng dữ liệu</div>
+      <div class="db-tables">
+        <% tables.forEach(function(t) { %>
+          <button class="db-table-btn<%= t.name === selectedTable ? ' active' : '' %>" onclick="location.href='/admin/database?table=<%= t.name %>'">
+            <span><%= t.name %></span>
+            <span class="count"><%= t.count %></span>
+          </button>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- DB Actions -->
+    <div class="card" style="padding:12px;margin-top:12px;">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:10px;padding:0 4px;">⚡ Thao tác nhanh</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <button class="btn btn-ghost btn-sm" style="justify-content:flex-start;text-align:left;" onclick="runQuickQuery('VACUUM')">
+          🗜️ VACUUM (thu gọn DB)
+        </button>
+        <button class="btn btn-ghost btn-sm" style="justify-content:flex-start;text-align:left;" onclick="runQuickQuery('PRAGMA integrity_check')">
+          🔍 Kiểm tra toàn vẹn
+        </button>
+        <button class="btn btn-ghost btn-sm" style="justify-content:flex-start;text-align:left;" onclick="runQuickQuery('PRAGMA wal_checkpoint(TRUNCATE)')">
+          📋 WAL Checkpoint
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div>
+    <!-- Tabs -->
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('data')">📊 Dữ liệu</button>
+      <button class="tab-btn" onclick="switchTab('schema')">🏗️ Cấu trúc</button>
+      <button class="tab-btn" onclick="switchTab('sql')">⚡ SQL Console</button>
+    </div>
+
+    <!-- Tab: Data -->
+    <div class="db-tab active" id="tab-data">
+      <% if (selectedTable) { %>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div style="font-size:14px;font-weight:600;color:var(--text-primary);">
+            <%= selectedTable %>
+            <span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:6px;">(<%= tableData.length %> dòng<%= tableData.length >= 200 ? ' — hiện tối đa 200' : '' %>)</span>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="exportTable('<%= selectedTable %>')">📥 Export CSV</button>
+          </div>
+        </div>
+        <% if (tableData.length > 0) { %>
+          <div class="result-scroll">
+            <table class="db-result-table">
+              <thead>
+                <tr>
+                  <% Object.keys(tableData[0]).forEach(function(col) { %>
+                    <th><%= col %></th>
+                  <% }) %>
+                  <th style="text-align:center;">✏️</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% tableData.forEach(function(row) { %>
+                  <tr>
+                    <% Object.entries(row).forEach(function(entry) { %>
+                      <td class="<%= entry[1] === null ? 'null-val' : '' %>"><%= entry[1] === null ? 'NULL' : String(entry[1]).substring(0, 100) %></td>
+                    <% }) %>
+                    <td style="text-align:center;">
+                      <button class="btn btn-ghost btn-sm btn-icon" title="Xoá" style="color:var(--danger);" onclick="deleteRow('<%= selectedTable %>', <%= row.id || 0 %>)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                      </button>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } else { %>
+          <div style="text-align:center;padding:40px;color:var(--text-muted);">Bảng trống — không có dữ liệu.</div>
+        <% } %>
+      <% } else { %>
+        <div style="text-align:center;padding:60px;color:var(--text-muted);">
+          <div style="font-size:40px;margin-bottom:12px;">📦</div>
+          <div>Chọn một bảng từ danh sách bên trái để xem dữ liệu.</div>
+        </div>
+      <% } %>
+    </div>
+
+    <!-- Tab: Schema -->
+    <div class="db-tab" id="tab-schema">
+      <% if (selectedTable && tableSchema.length > 0) { %>
+        <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">
+          Cấu trúc bảng: <span style="color:var(--accent);"><%= selectedTable %></span>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div class="schema-col">
+            <div class="header">Tên cột</div>
+            <div class="header">Kiểu</div>
+            <div class="header">Thuộc tính</div>
+            <% tableSchema.forEach(function(col) { %>
+              <div class="col-name"><%= col.name %></div>
+              <div class="col-type"><%= col.type || 'TEXT' %></div>
+              <div class="col-extra">
+                <% if (col.pk) { %><span style="color:#f59e0b;">PK</span> <% } %>
+                <% if (col.notnull) { %><span style="color:#ef4444;">NOT NULL</span> <% } %>
+                <% if (col.dflt_value !== null) { %><span>default: <%= col.dflt_value %></span><% } %>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+
+        <% if (tableIndexes && tableIndexes.length > 0) { %>
+          <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-top:20px;margin-bottom:8px;">📑 Indexes</div>
+          <div class="card" style="padding:12px;">
+            <% tableIndexes.forEach(function(idx) { %>
+              <div style="font-size:12px;color:var(--text-secondary);padding:4px 0;">
+                <code style="color:var(--accent);"><%= idx.name %></code>
+                <% if (idx.unique) { %><span style="color:#f59e0b;font-size:11px;margin-left:4px;">UNIQUE</span><% } %>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+      <% } else { %>
+        <div style="text-align:center;padding:60px;color:var(--text-muted);">Chọn một bảng để xem cấu trúc.</div>
+      <% } %>
+    </div>
+
+    <!-- Tab: SQL Console -->
+    <div class="db-tab" id="tab-sql">
+      <div class="card">
+        <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">⚡ SQL Console</div>
+        <textarea class="sql-editor" id="sql-input" placeholder="Nhập câu lệnh SQL... (VD: SELECT * FROM videos LIMIT 10)"></textarea>
+        <div class="sql-toolbar">
+          <button class="btn btn-primary btn-sm" id="sql-run-btn" onclick="runSQL()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Chạy (Ctrl+Enter)
+          </button>
+          <span style="font-size:11px;color:var(--text-muted);">SELECT, INSERT, UPDATE, DELETE, PRAGMA...</span>
+        </div>
+        <div id="sql-result-msg"></div>
+        <div id="sql-result" style="margin-top:14px;"></div>
+      </div>
+
+      <div class="db-danger">
+        <div class="db-danger-title">⚠️ Cảnh báo</div>
+        <ul style="font-size:12.5px;color:#b0b0d0;line-height:1.8;padding-left:18px;margin:0;">
+          <li>SQL Console chạy trực tiếp trên database. Các lệnh thay đổi dữ liệu KHÔNG THỂ hoàn tác.</li>
+          <li>Tránh dùng DROP TABLE hoặc DELETE không có WHERE.</li>
+          <li>Backup database trước khi thay đổi cấu trúc.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // Tabs
+  window.switchTab = function(name) {
+    document.querySelectorAll('.db-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.getElementById('tab-' + name).classList.add('active');
+    event.target.closest('.tab-btn').classList.add('active');
+  };
+
+  // SQL Console
+  window.runSQL = function() {
+    var sql = document.getElementById('sql-input').value.trim();
+    if (!sql) return;
+    var btn = document.getElementById('sql-run-btn');
+    btn.disabled = true; btn.textContent = 'Đang chạy...';
+    fetch('/admin/api/database/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql: sql })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><polygon points="5 3 19 12 5 21 5 3"/></svg> Chạy (Ctrl+Enter)';
+      var msgEl = document.getElementById('sql-result-msg');
+      var resultEl = document.getElementById('sql-result');
+      if (d.error) {
+        msgEl.style.display = 'block';
+        msgEl.style.background = 'rgba(239,68,68,0.08)';
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = '❌ ' + d.error;
+        resultEl.innerHTML = '';
+        return;
+      }
+      if (d.type === 'select' && d.rows) {
+        msgEl.style.display = 'block';
+        msgEl.style.background = 'rgba(34,197,94,0.08)';
+        msgEl.style.color = '#22c55e';
+        msgEl.textContent = '✅ ' + d.rows.length + ' dòng' + (d.time ? ' (' + d.time + 'ms)' : '');
+        if (d.rows.length > 0) {
+          var html = '<div class="result-scroll"><table class="db-result-table"><thead><tr>';
+          Object.keys(d.rows[0]).forEach(function(k) { html += '<th>' + k + '</th>'; });
+          html += '</tr></thead><tbody>';
+          d.rows.forEach(function(row) {
+            html += '<tr>';
+            Object.values(row).forEach(function(v) {
+              if (v === null) html += '<td class="null-val">NULL</td>';
+              else html += '<td>' + String(v).substring(0, 200).replace(/</g, '&lt;') + '</td>';
+            });
+            html += '</tr>';
+          });
+          html += '</tbody></table></div>';
+          resultEl.innerHTML = html;
+        } else { resultEl.innerHTML = ''; }
+      } else {
+        msgEl.style.display = 'block';
+        msgEl.style.background = 'rgba(34,197,94,0.08)';
+        msgEl.style.color = '#22c55e';
+        msgEl.textContent = '✅ Thành công. ' + (d.changes !== undefined ? d.changes + ' dòng bị ảnh hưởng.' : '') + (d.time ? ' (' + d.time + 'ms)' : '');
+        resultEl.innerHTML = '';
+      }
+    }).catch(function(e) {
+      btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><polygon points="5 3 19 12 5 21 5 3"/></svg> Chạy (Ctrl+Enter)';
+      var msgEl = document.getElementById('sql-result-msg');
+      msgEl.style.display = 'block'; msgEl.style.background = 'rgba(239,68,68,0.08)'; msgEl.style.color = '#ef4444';
+      msgEl.textContent = '❌ Lỗi kết nối: ' + e.message;
+    });
+  };
+
+  // Ctrl+Enter to run
+  document.getElementById('sql-input').addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runSQL(); }
+  });
+
+  // Quick query
+  window.runQuickQuery = function(sql) {
+    document.getElementById('sql-input').value = sql;
+    switchTabByName('sql');
+    runSQL();
+  };
+
+  function switchTabByName(name) {
+    document.querySelectorAll('.db-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.getElementById('tab-' + name).classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(function(b) {
+      if (b.textContent.toLowerCase().includes(name === 'sql' ? 'sql' : name === 'schema' ? 'cấu' : 'dữ'))
+        b.classList.add('active');
+    });
+  }
+
+  // Delete row
+  window.deleteRow = function(table, id) {
+    if (!id) { showToast('error', 'Không thể xoá dòng không có ID'); return; }
+    if (!confirm('Xoá dòng id=' + id + ' khỏi bảng ' + table + '?')) return;
+    fetch('/admin/api/database/query', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql: 'DELETE FROM ' + table + ' WHERE id = ' + id })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.error) { showToast('error', d.error); }
+      else { showToast('success', 'Đã xoá!'); location.reload(); }
+    }).catch(function() { showToast('error', 'Lỗi kết nối'); });
+  };
+
+  // Export CSV
+  window.exportTable = function(table) {
+    fetch('/admin/api/database/query', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql: 'SELECT * FROM ' + table })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      if (!d.rows || d.rows.length === 0) { showToast('warn', 'Bảng trống'); return; }
+      var cols = Object.keys(d.rows[0]);
+      var csv = cols.join(',') + '\n';
+      d.rows.forEach(function(row) {
+        csv += cols.map(function(c) {
+          var v = row[c];
+          if (v === null) return '';
+          v = String(v).replace(/"/g, '""');
+          return '"' + v + '"';
+        }).join(',') + '\n';
+      });
+      var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      var link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = table + '_' + new Date().toISOString().slice(0,10) + '.csv';
+      link.click();
+    });
+  };
+})();
+</script>
+
+<%- include('../partials/footer') %>

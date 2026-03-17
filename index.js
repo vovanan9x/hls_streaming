@@ -98,10 +98,10 @@ workerCallbackRouter.post('/done', workerTokenAuth, (req, res) => {
         m3u8Url = `${cdnBase}/hls/${videoId}/master.m3u8`;
         // Build full thumbnail URL from storage server
         if (thumbnailName) {
-            thumbUrl = `${cdnBase}/hls/${videoId}/${thumbnailName}`;
+            thumbUrl = `${cdnBase}/thumbnails/${thumbnailName}`;
         }
     }
-    const iframeUrl = m3u8Url ? `/watch/${videoId}` : '';
+    const iframeUrl = m3u8Url ? `/embed/${videoId}` : '';
     db.prepare(`UPDATE videos SET m3u8_url=?, iframe_url=?, thumbnail=?, status='ready', progress=100,
         updated_at=datetime('now','localtime') WHERE id=?`)
         .run(m3u8Url, iframeUrl, thumbUrl, videoId);

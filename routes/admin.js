@@ -1398,43 +1398,79 @@ router.get('/guide', requireAuth, (req, res) => {
 });
 
 // =============================
-// ANALYTICS
+// DATABASE MANAGEMENT
 // =============================
-router.get('/analytics', requireAuth, (req, res) => {
+router.get('/database', requireAdmin, (req, res) => {
     const db = getDb();
-    const user = req.session.user;
-    const isAdmin = user.role === 'administrator';
+    const fs = require('fs');
+    const dbPath = require('path').join(__dirname, '..', 'data', 'streaming.db');
 
-    // Views per day (last 7 days)
-    const dailyViews = db.prepare(`
-        SELECT DATE(last_ping) as day, COUNT(DISTINCT session_key) as views
-        FROM view_logs
-        WHERE last_ping >= DATE('now', '-7 days')
-        ${!isAdmin ? 'AND video_id IN (SELECT id FROM videos WHERE uploaded_by = ?)' : ''}
-        GROUP BY day ORDER BY day ASC
-    `).all(...(!isAdmin ? [user.id] : []));
+    // DB info
+    let dbSize = '—';
+    try {
+        const stats = fs.statSync(dbPath);
+        const mb = (stats.size / 1024 / 1024).toFixed(2);
+        dbSize = mb > 1 ? mb + ' MB' : (stats.size / 1024).toFixed(1) + ' KB';
+    } catch (e) {}
+    const walMode = db.pragma('journal_mode')[0].journal_mode;
 
-    // Top 10 videos
-    const topVideos = db.prepare(`
-        SELECT v.id, v.title, COUNT(DISTINCT l.session_key) as total_views
-        FROM videos v LEFT JOIN view_logs l ON l.video_id = v.id
-        WHERE v.status = 'ready'
-        ${!isAdmin ? 'AND v.uploaded_by = ?' : ''}
-        GROUP BY v.id ORDER BY total_views DESC LIMIT 10
-    `).all(...(!isAdmin ? [user.id] : []));
+    // Get all tables with row counts
+    const rawTables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
+    const tables = rawTables.map(t => ({
+        name: t.name,
+        count: db.prepare(`SELECT COUNT(*) as cnt FROM "${t.name}"`).get().cnt
+    }));
 
-    // Total unique viewers
-    const totalViews = db.prepare(`
-        SELECT COUNT(DISTINCT session_key) as cnt FROM view_logs
-        ${!isAdmin ? 'WHERE video_id IN (SELECT id FROM videos WHERE uploaded_by = ?)' : ''}
-    `).get(...(!isAdmin ? [user.id] : []));
+    const selectedTable = req.query.table || '';
+    let tableData = [];
+    let tableSchema = [];
+    let tableIndexes = [];
 
-    res.render('admin/analytics', {
-        title: 'Thống kê',
-        dailyViews,
-        topVideos,
-        totalViews: totalViews.cnt,
+    if (selectedTable && tables.some(t => t.name === selectedTable)) {
+        tableData = db.prepare(`SELECT * FROM "${selectedTable}" ORDER BY rowid DESC LIMIT 200`).all();
+        tableSchema = db.prepare(`PRAGMA table_info("${selectedTable}")`).all();
+        tableIndexes = db.prepare(`PRAGMA index_list("${selectedTable}")`).all();
+    }
+
+    res.render('admin/database', {
+        title: 'Database',
+        dbInfo: { size: dbSize, tableCount: tables.length, walMode: walMode.toUpperCase() },
+        tables,
+        selectedTable,
+        tableData,
+        tableSchema,
+        tableIndexes,
     });
+});
+
+// SQL Console API
+router.post('/api/database/query', requireAdmin, (req, res) => {
+    const db = getDb();
+    const { sql } = req.body;
+    if (!sql || !sql.trim()) return res.json({ error: 'Câu SQL trống' });
+
+    const trimmed = sql.trim();
+    const start = Date.now();
+
+    try {
+        // VACUUM / REINDEX can't use .prepare()
+        if (/^\s*(VACUUM|REINDEX)/i.test(trimmed)) {
+            db.exec(trimmed);
+            res.json({ type: 'write', changes: 0, time: Date.now() - start });
+            return;
+        }
+        // Detect if it's a SELECT/PRAGMA query
+        const isSelect = /^\s*(SELECT|PRAGMA|EXPLAIN|WITH)\s/i.test(trimmed);
+        if (isSelect) {
+            const rows = db.prepare(trimmed).all();
+            res.json({ type: 'select', rows, time: Date.now() - start });
+        } else {
+            const result = db.prepare(trimmed).run();
+            res.json({ type: 'write', changes: result.changes, time: Date.now() - start });
+        }
+    } catch (e) {
+        res.json({ error: e.message });
+    }
 });
 
 // =============================
@@ -1510,7 +1546,7 @@ router.post('/api/worker/done', (req, res) => {
         }
     }
 
-    const iframeUrl = m3u8Url ? `/watch/${videoId}` : '';
+    const iframeUrl = m3u8Url ? `/embed/${videoId}` : '';
     db.prepare(`UPDATE videos SET m3u8_url=?, iframe_url=?, thumbnail=?, status='ready', progress=100,
         updated_at=datetime('now','localtime') WHERE id=?`)
         .run(m3u8Url, iframeUrl, thumbnailName || video.thumbnail || '', videoId);

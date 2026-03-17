@@ -129,7 +129,7 @@
             <% } %>
             <td class="td-thumb">
               <% if (v.thumbnail) { %>
-                <img src="/uploads/thumbnails/<%= v.thumbnail %>" alt="thumb" loading="lazy">
+                <img src="<%= v.thumbnail.startsWith('http') ? v.thumbnail : '/uploads/thumbnails/' + v.thumbnail %>" alt="thumb" loading="lazy">
               <% } else { %>
                 <div class="td-thumb-placeholder">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
