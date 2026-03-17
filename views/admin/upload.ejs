@@ -146,11 +146,11 @@
         </label>
         <div style="display:flex;gap:8px;margin-top:6px;" id="quality-group">
           <label class="quality-label" id="ql-sd">
-            <input type="radio" name="qualities" value="sd" class="quality-rb" checked>
-            <span><strong style="font-size:13px;">SD</strong><small style="color:var(--text-muted);display:block;font-size:10.5px;">720p · Nhanh</small></span>
+            <input type="checkbox" name="qualities" value="sd" class="quality-cb" checked>
+            <span><strong style="font-size:13px;">SD</strong><small style="color:var(--text-muted);display:block;font-size:10.5px;">70% · Nhanh</small></span>
           </label>
           <label class="quality-label" id="ql-hd">
-            <input type="radio" name="qualities" value="hd" class="quality-rb">
+            <input type="checkbox" name="qualities" value="hd" class="quality-cb">
             <span><strong style="font-size:13px;">HD</strong><small style="color:var(--text-muted);display:block;font-size:10.5px;">Gốc · Cao</small></span>
           </label>
         </div>
@@ -538,14 +538,25 @@
 
         xhr2.addEventListener('load', function () {
           pollDone = true;
-          clearInterval(progressPoll);
+          if (activePollInterval) { clearInterval(activePollInterval); activePollInterval = null; }
+          activeXhr = null;
           stopPulseAnimation();
-          handleXhrResponse(xhr2.responseText);
+          // Cập nhật UI thành 100% trước khi redirect
+          document.getElementById('ov-pct').textContent = '100';
+          document.getElementById('ov-bar-fill').style.width = '100%';
+          document.getElementById('ov-bar-fill').style.background = 'linear-gradient(90deg, #34d399, #059669)';
+          document.getElementById('ov-phase').textContent = '✅ Hoàn tất! Đang chuyển trang...';
+          document.getElementById('ov-phase').style.color = '#34d399';
+          document.getElementById('ov-cancel-btn').style.display = 'none';
+          setTimeout(function () {
+            hideUploadOverlay();
+            handleXhrResponse(xhr2.responseText);
+          }, 500);
         });
 
         xhr2.addEventListener('error', function () {
           pollDone = true;
-          clearInterval(progressPoll);
+          if (activePollInterval) { clearInterval(activePollInterval); }
           activePollInterval = null;
           activeXhr = null;
           stopPulseAnimation();

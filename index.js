@@ -90,18 +90,21 @@ workerCallbackRouter.post('/done', workerTokenAuth, (req, res) => {
     if (!video) return res.status(404).json({ error: 'Video not found' });
     const serverInfo = db.prepare('SELECT * FROM servers WHERE id=?').get(video.server_id);
     let m3u8Url = '';
+    let thumbUrl = thumbnailName || video.thumbnail || '';
     if (serverInfo) {
-        if (serverInfo.cdn_url && serverInfo.cdn_url.trim()) {
-            m3u8Url = `${serverInfo.cdn_url.replace(/\/$/, '')}/hls/${videoId}/master.m3u8`;
-        } else {
-            const base = (serverInfo.storage_path || '/var/hls-storage').replace(/\/$/, '');
-            m3u8Url = `http://${serverInfo.ip}:80${base}/${videoId}/master.m3u8`;
+        const cdnBase = (serverInfo.cdn_url && serverInfo.cdn_url.trim())
+            ? serverInfo.cdn_url.replace(/\/$/, '')
+            : `http://${serverInfo.ip}:80`;
+        m3u8Url = `${cdnBase}/hls/${videoId}/master.m3u8`;
+        // Build full thumbnail URL from storage server
+        if (thumbnailName) {
+            thumbUrl = `${cdnBase}/hls/${videoId}/${thumbnailName}`;
         }
     }
     const iframeUrl = m3u8Url ? `/watch/${videoId}` : '';
     db.prepare(`UPDATE videos SET m3u8_url=?, iframe_url=?, thumbnail=?, status='ready', progress=100,
         updated_at=datetime('now','localtime') WHERE id=?`)
-        .run(m3u8Url, iframeUrl, thumbnailName || video.thumbnail || '', videoId);
+        .run(m3u8Url, iframeUrl, thumbUrl, videoId);
     const { encodeQueue } = require('./services/queue');
     encodeQueue.markRemoteDone(videoId);
     console.log(`[Worker Callback] Video ${videoId} DONE → ${m3u8Url}`);

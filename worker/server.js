@@ -46,10 +46,10 @@ const TMP_DIR = process.env.WORKER_TMP_DIR || '/tmp/worker_uploads';
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
 // Quality presets (giữ đồng bộ với app server)
-// sd: encode xuống tối đa 720p (không upscale nếu gốc nhỏ hơn)
+// sd: giảm 30% độ phân giải so với gốc (tức 70% kích thước gốc)
 // hd: giữ nguyên độ phân giải gốc 100%
 const QUALITY_PRESETS = {
-    'sd': { maxHeight: 720, videoBitrate: '2000k', audioBitrate: '128k', bandwidth: 2176000, scaleDown: true },
+    'sd': { scaleFactor: 0.7, videoBitrate: '2000k', audioBitrate: '128k', bandwidth: 2176000, scaleDown: 'percent' },
     'hd': { videoBitrate: '0', audioBitrate: '192k', bandwidth: 8000000, scaleDown: false },
     // Legacy presets (backwards compat)
     '360p': { width: 640, height: 360, videoBitrate: '800k', audioBitrate: '96k', bandwidth: 896000, scaleDown: 'fixed' },
@@ -315,9 +315,9 @@ function encodeQuality(inputPath, outputDir, preset, qualityName, totalDur, onPr
         const outputOpts = [];
         if (preset.scaleDown === 'fixed') {
             outputOpts.push(`-vf scale=${preset.width}:${preset.height}:force_original_aspect_ratio=decrease,pad=${preset.width}:${preset.height}:(ow-iw)/2:(oh-ih)/2`);
-        } else if (preset.scaleDown === true && preset.maxHeight) {
-            // SD: giới hạn chiều cao tối đa, không upscale, không pad
-            outputOpts.push(`-vf scale=-2:min(ih\\,${preset.maxHeight})`);
+        } else if (preset.scaleDown === 'percent' && preset.scaleFactor) {
+            const f = preset.scaleFactor;
+            outputOpts.push(`-vf scale=trunc(iw*${f}/2)*2:trunc(ih*${f}/2)*2`);
         }
         // HD: không thêm filter scale
         if (preset.videoBitrate === '0') {

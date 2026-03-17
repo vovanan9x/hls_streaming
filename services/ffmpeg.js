@@ -8,10 +8,10 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 
 // Quality presets
-// sd: encode xuống tối đa 720p (không upscale nếu gốc nhỏ hơn)
+// sd: giảm 30% độ phân giải so với gốc (tức 70% kích thước gốc)
 // hd: giữ nguyên độ phân giải gốc 100%
 const QUALITY_PRESETS = {
-    'sd': { maxHeight: 720, videoBitrate: '2000k', audioBitrate: '128k', bandwidth: 2176000, scaleDown: true },
+    'sd': { scaleFactor: 0.7, videoBitrate: '2000k', audioBitrate: '128k', bandwidth: 2176000, scaleDown: 'percent' },
     'hd': { videoBitrate: '0', audioBitrate: '192k', bandwidth: 8000000, scaleDown: false },
     // Legacy presets (backwards compat)
     '360p': { width: 640, height: 360, videoBitrate: '800k', audioBitrate: '96k', bandwidth: 896000, scaleDown: 'fixed' },
@@ -59,10 +59,11 @@ function encodeQuality(inputPath, outputDir, preset, qualityName, totalDuration,
         if (preset.scaleDown === 'fixed') {
             // Legacy 360p/480p/720p/1080p: scale cố định + pad
             outputOpts.push(`-vf scale=${preset.width}:${preset.height}:force_original_aspect_ratio=decrease,pad=${preset.width}:${preset.height}:(ow-iw)/2:(oh-ih)/2`);
-        } else if (preset.scaleDown === true && preset.maxHeight) {
-            // SD: scale xuống tối đa maxHeight, KHÔNG upscale nếu gốc nhỏ hơn, KHÔNG pad
-            // scale=-2:min(ih\,720) → giữ nguyên tỉ lệ, chiều cao tối đa 720px
-            outputOpts.push(`-vf scale=-2:min(ih\,${preset.maxHeight})`);
+        } else if (preset.scaleDown === 'percent' && preset.scaleFactor) {
+            // SD: giảm xuống scaleFactor (0.7 = 70%) của kích thước gốc
+            // trunc(iw*0.7/2)*2 đảm bảo kích thước chẵn (yêu cầu của libx264)
+            const f = preset.scaleFactor;
+            outputOpts.push(`-vf scale=trunc(iw*${f}/2)*2:trunc(ih*${f}/2)*2`);
         }
         // HD (scaleDown=false): không thêm bộ lọc scale → giữ nguyên gốc
 
