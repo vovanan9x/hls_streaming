@@ -2,3 +2,18 @@ node_modules/
 .env
 dist/
 *.log
+
+# Database
+data/
+*.sqlite
+*.db
+*.db-shm
+*.db-wal
+
+# Uploads & storage (runtime data)
+uploads/
+storage/
+
+# OS files
+Thumbs.db
+.DS_Store
