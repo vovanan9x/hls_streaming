@@ -164,4 +164,73 @@ function testConnection(serverInfo) {
     });
 }
 
-module.exports = { uploadHlsToServer, testConnection };
+/**
+ * Xoá file HLS và thumbnail của video trên storage server qua SSH
+ * @param {Object} serverInfo - { ip, port, username, password, storage_path }
+ * @param {number|string} videoId
+ * @returns {Promise<boolean>}
+ */
+function deleteVideoFromStorage(serverInfo, videoId) {
+    return new Promise((resolve) => {
+        if (!serverInfo || !serverInfo.ip || !serverInfo.storage_path) {
+            console.log(`[SFTP Delete] No server info for video ${videoId}, skipping remote delete`);
+            return resolve(false);
+        }
+
+        const conn = new Client();
+        const storagePath = serverInfo.storage_path.replace(/\/$/, '');
+        // Xoá thư mục HLS: /var/www/hls-storage/hls/<videoId>
+        // Xoá thumbnail: /var/www/hls-storage/thumbnails/thumb_<videoId>.*
+        const cmds = [
+            `rm -rf "${storagePath}/hls/${videoId}"`,
+            `rm -f "${storagePath}/thumbnails/thumb_${videoId}."*`,
+        ];
+        const cmd = cmds.join(' && ');
+
+        const timeout = setTimeout(() => {
+            console.error(`[SFTP Delete] Timeout deleting video ${videoId} from ${serverInfo.ip}`);
+            conn.end();
+            resolve(false);
+        }, 15000);
+
+        conn.on('ready', () => {
+            conn.exec(cmd, (err, stream) => {
+                if (err) {
+                    clearTimeout(timeout);
+                    console.error(`[SFTP Delete] Exec error video ${videoId}:`, err.message);
+                    conn.end();
+                    return resolve(false);
+                }
+                let stderr = '';
+                stream.stderr.on('data', (d) => { stderr += d; });
+                stream.on('close', (code) => {
+                    clearTimeout(timeout);
+                    conn.end();
+                    if (code === 0 || !stderr) {
+                        console.log(`[SFTP Delete] Deleted video ${videoId} from ${serverInfo.ip}`);
+                        resolve(true);
+                    } else {
+                        console.error(`[SFTP Delete] Error video ${videoId}: ${stderr}`);
+                        resolve(false);
+                    }
+                });
+            });
+        });
+
+        conn.on('error', (err) => {
+            clearTimeout(timeout);
+            console.error(`[SFTP Delete] Connection error ${serverInfo.ip}:`, err.message);
+            resolve(false);
+        });
+
+        conn.connect({
+            host: serverInfo.ip,
+            port: serverInfo.port || 22,
+            username: serverInfo.username,
+            password: serverInfo.password,
+            readyTimeout: 10000,
+        });
+    });
+}
+
+module.exports = { uploadHlsToServer, testConnection, deleteVideoFromStorage };

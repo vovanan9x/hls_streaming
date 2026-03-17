@@ -9,7 +9,7 @@ const { getDb, getSetting, setSetting, addErrorLog } = require('../database');
 const { convertToHLS, generateThumbnail } = require('../services/ffmpeg');
 const { downloadRemoteFile, UPLOAD_DIR, THUMB_DIR } = require('../services/upload');
 const { requireAuth, requireAdmin, requireUploader } = require('../middleware/auth');
-const { uploadHlsToServer } = require('../services/sftp');
+const { uploadHlsToServer, deleteVideoFromStorage } = require('../services/sftp');
 const { getAllViewerCounts } = require('../services/viewers');
 const { encodeQueue } = require('../services/queue');
 const workerPool = require('../services/workerPool');
@@ -603,6 +603,11 @@ router.post('/videos/:id/delete', requireAdmin, async (req, res) => {
             purgeVideoCache(video.id, video.server_id).catch(e =>
                 console.error(`[CFCache] Purge failed for video ${video.id}:`, e.message)
             );
+            // Xoá file HLS + thumbnail trên storage server
+            const serverInfo = db.prepare('SELECT * FROM servers WHERE id = ?').get(video.server_id);
+            deleteVideoFromStorage(serverInfo, video.id).catch(e =>
+                console.error(`[SFTP Delete] Failed for video ${video.id}:`, e.message)
+            );
         }
 
         const hlsDir = path.join(__dirname, '..', 'storage', 'hls', video.id.toString());
@@ -663,7 +668,13 @@ router.post('/videos/:id/cancel', requireAuth, (req, res) => {
         killFFmpeg(video.id.toString());
         killFFmpeg(video.id);
 
-        // 3. Xóa database LUÔN để giao diện phản hồi nhanh
+        // 3. Xoá file trên storage server (fire & forget)
+        if (video.server_id) {
+            const srvInfo = db.prepare('SELECT * FROM servers WHERE id = ?').get(video.server_id);
+            deleteVideoFromStorage(srvInfo, video.id).catch(() => {});
+        }
+
+        // 4. Xóa database LUÔN để giao diện phản hồi nhanh
         db.prepare('DELETE FROM videos WHERE id = ?').run(video.id);
 
         // 4. Xóa file rác (Dùng setTimeout trên Windows để FFmpeg nhả lock file)
@@ -717,7 +728,13 @@ router.post('/api/videos/:id/cancel', requireAuth, (req, res) => {
         killFFmpeg(video.id);
     } catch (e) { /* ignore */ }
 
-    // 3. Xóa DB
+    // 3. Xoá file trên storage server (fire & forget)
+    if (video.server_id) {
+        const srvInfo = db.prepare('SELECT * FROM servers WHERE id = ?').get(video.server_id);
+        deleteVideoFromStorage(srvInfo, video.id).catch(() => {});
+    }
+
+    // 4. Xóa DB
     db.prepare('DELETE FROM videos WHERE id = ?').run(video.id);
 
     // 4. Xóa file tạm (setTimeout để FFmpeg nhả lock trên Windows)
@@ -797,6 +814,11 @@ router.post('/api/videos/bulk-cancel', requireAdmin, (req, res) => {
         if (!video) continue;
         encodeQueue.cancel(video.id);
         try { killFFmpeg(video.id.toString()); killFFmpeg(video.id); } catch (_) {}
+        // Xoá file trên storage server
+        if (video.server_id) {
+            const srvInfo = db.prepare('SELECT * FROM servers WHERE id = ?').get(video.server_id);
+            deleteVideoFromStorage(srvInfo, video.id).catch(() => {});
+        }
         db.prepare('DELETE FROM videos WHERE id = ?').run(video.id);
         const hlsDir = path.join(__dirname, '..', 'storage', 'hls', video.id.toString());
         setTimeout(() => {
@@ -924,6 +946,11 @@ router.post('/delete-requests/:id/approve', requireAdmin, (req, res) => {
         if (video.thumbnail) {
             const thumbPath = path.join(THUMB_DIR, video.thumbnail);
             if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+        }
+        // Xoá file trên storage server
+        if (video.server_id) {
+            const srvInfo = db.prepare('SELECT * FROM servers WHERE id = ?').get(video.server_id);
+            deleteVideoFromStorage(srvInfo, video.id).catch(() => {});
         }
         // Xoá DB video (delete_requests sẽ cascade → video_id = NULL vì ON DELETE CASCADE)
         db.prepare('DELETE FROM videos WHERE id = ?').run(video.id);
@@ -1237,6 +1264,12 @@ router.post('/api/videos/:id/cancel', requireAuth, (req, res) => {
     const { killFFmpeg } = require('../services/ffmpeg');
     killFFmpeg(video.id.toString());
     killFFmpeg(video.id);
+
+    // Xoá file trên storage server (fire & forget)
+    if (video.server_id) {
+        const srvInfo = db.prepare('SELECT * FROM servers WHERE id = ?').get(video.server_id);
+        deleteVideoFromStorage(srvInfo, video.id).catch(() => {});
+    }
 
     // Xoá DB ngay để phản hồi nhanh
     db.prepare('DELETE FROM videos WHERE id = ?').run(video.id);
