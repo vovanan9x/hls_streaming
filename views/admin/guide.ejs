@@ -248,53 +248,338 @@
   <!-- ─── TAB: STORAGE SERVER ─── -->
   <div id="tab-server" class="guide-section">
     <div class="info-box">
-      <strong style="color:var(--accent);">Storage Server</strong> là nơi lưu trữ toàn bộ file HLS. Được kết nối qua SFTP (port 22). Worker sẽ upload HLS lên đây sau khi encode xong. Nginx trên server này phục vụ file cho CDN.
+      <strong style="color:var(--accent);">Storage Server</strong> là nơi lưu trữ toàn bộ file HLS (.m3u8, .ts segments, thumbnails). Worker encode xong → SFTP upload lên đây. Nginx trên server này phục vụ file cho CDN / người dùng.<br>
+      <strong>Yêu cầu tối thiểu:</strong> Ubuntu 22.04+, 1 CPU, 1GB RAM, dung lượng đĩa tuỳ nhu cầu (10GB trở lên).
     </div>
 
-    <div class="step-title"><span class="step-num">1</span>Cài Nginx trên Storage Server</div>
-    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>apt update && apt install -y nginx
+    <!-- Hetzner Rescue System -->
+    <div style="border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:20px;margin-bottom:20px;background:rgba(139,92,246,0.04);">
+      <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:4px;display:flex;align-items:center;gap:8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        Cài đặt OS từ Hetzner Rescue System
+      </div>
+      <p style="font-size:12.5px;color:#8888aa;margin-bottom:14px;">Áp dụng cho Hetzner Dedicated Server (ví dụ: AX41, AX52, EX44...). Nếu bạn đã có VPS với OS sẵn → bỏ qua phần này.</p>
 
-# Tạo thư mục lưu video
-mkdir -p /var/www/hls-storage
-chown -R www-data:www-data /var/www/hls-storage</pre>
+      <div class="step-title"><span class="step-num">A</span>Kích hoạt Rescue System</div>
+      <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Vào <strong>Hetzner Robot</strong> → chọn server → tab <strong>Rescue</strong>:</p>
+      <ul style="font-size:13px;color:#b0b0d0;line-height:2;padding-left:20px;margin:0 0 8px;">
+        <li>Chọn <strong>Linux 64bit</strong></li>
+        <li>Nhấn <strong>Activate Rescue System</strong> → ghi lại <strong>password root</strong></li>
+        <li>Tab <strong>Reset</strong> → nhấn <strong>Hardware Reset</strong> để reboot vào Rescue</li>
+      </ul>
 
-    <div class="step-title"><span class="step-num">2</span>Cấu hình Nginx để phục vụ HLS</div>
-    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Nhấn nút <strong>Copy Nginx Config</strong> trong trang <a href="/admin/servers" style="color:var(--accent);">Quản lí Server</a> để lấy config tự động theo server của bạn:</p>
-    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># /etc/nginx/sites-available/hls-storage</span>
-server {
+      <div class="step-title"><span class="step-num">B</span>SSH vào Rescue & chạy installimage</div>
+      <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># SSH vào Rescue</span>
+ssh root@<span class="string">&lt;SERVER_IP&gt;</span>
+
+<span class="comment"># Xem ổ đĩa</span>
+lsblk
+
+<span class="comment"># Chạy cài đặt OS</span>
+installimage</pre>
+      <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Chọn <strong>Ubuntu 22.04</strong> → sửa config như sau (RAID 1 — khuyến nghị cho 2 ổ HDD):</p>
+      <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment">## Cấu hình 2 ổ HDD RAID 1 (mirror — an toàn dữ liệu)</span>
+<span class="key">DRIVE1</span> /dev/sda
+<span class="key">DRIVE2</span> /dev/sdb
+<span class="key">SWRAID</span> <span class="string">1</span>
+<span class="key">SWRAIDLEVEL</span> <span class="string">1</span>
+
+<span class="key">HOSTNAME</span> <span class="string">storage01</span>
+
+<span class="comment">## Phân vùng</span>
+<span class="key">PART</span> /boot  ext4  1G
+<span class="key">PART</span> swap   swap  8G
+<span class="key">PART</span> /      ext4  100G    <span class="comment"># OS + apps</span>
+<span class="key">PART</span> /var/www ext4 all    <span class="comment"># Toàn bộ còn lại cho HLS storage</span></pre>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;">
+        <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:8px;padding:10px 12px;font-size:12.5px;">
+          <div style="color:#22c55e;font-weight:700;margin-bottom:4px;">✅ RAID 1 (khuyến nghị)</div>
+          <div style="color:#b0b0d0;">2 ổ mirror → ~8TB khả dụng. 1 ổ hỏng vẫn không mất dữ liệu. Tốc độ đọc nhanh hơn.</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12.5px;">
+          <div style="color:var(--text-primary);font-weight:700;margin-bottom:4px;">⚡ Không RAID</div>
+          <div style="color:#b0b0d0;">Đặt <code>SWRAID 0</code>, bỏ DRIVE2. 1 ổ OS + 1 ổ mount riêng = ~16TB nhưng không mirror.</div>
+        </div>
+      </div>
+
+      <div class="step-title"><span class="step-num">C</span>Lưu config & Reboot</div>
+      <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Trong editor installimage:</span>
+<span class="comment"># F2 → Lưu | F10 → Thoát | YES → Xác nhận format + cài OS</span>
+<span class="comment"># Đợi 3-5 phút...</span>
+
+<span class="comment"># Sau khi xong → reboot vào OS mới</span>
+reboot
+
+<span class="comment"># Đợi 1-2 phút, SSH lại</span>
+ssh root@<span class="string">&lt;SERVER_IP&gt;</span></pre>
+
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;margin-top:10px;">
+        <div style="font-weight:700;color:var(--text-primary);margin-bottom:6px;">📊 Ước tính dung lượng (RAID 1 — ~8TB khả dụng)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+          <div style="background:rgba(139,92,246,0.08);border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:11px;color:#8888aa;">SD (720p) / 1h</div>
+            <div style="font-size:14px;font-weight:700;color:var(--accent);">~800MB</div>
+            <div style="font-size:11px;color:#8888aa;">~10,000 video</div>
+          </div>
+          <div style="background:rgba(139,92,246,0.08);border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:11px;color:#8888aa;">HD (1080p) / 1h</div>
+            <div style="font-size:14px;font-weight:700;color:var(--accent);">~2GB</div>
+            <div style="font-size:11px;color:#8888aa;">~4,000 video</div>
+          </div>
+          <div style="background:rgba(139,92,246,0.08);border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:11px;color:#8888aa;">SD + HD / 1h</div>
+            <div style="font-size:14px;font-weight:700;color:var(--accent);">~2.8GB</div>
+            <div style="font-size:11px;color:#8888aa;">~2,800 video</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Prerequisites -->
+    <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:16px;margin-bottom:20px;">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#f59e0b;">📋 Chuẩn bị trước khi bắt đầu</div>
+      <ul style="font-size:13px;color:#b0b0d0;line-height:2;padding-left:20px;margin:0;">
+        <li>Thuê VPS / Dedicated Server (VD: Hetzner, Contabo, Vultr, DigitalOcean)</li>
+        <li>Truy cập SSH (root hoặc sudo user)</li>
+        <li>Biết IP public của server</li>
+        <li>(Tuỳ chọn) Domain/subdomain nếu muốn dùng CDN Cloudflare</li>
+      </ul>
+    </div>
+
+    <!-- Step 1: OS Setup -->
+    <div class="step-title"><span class="step-num">1</span>Cập nhật hệ thống & cài công cụ cơ bản</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">SSH vào server và chạy:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Cập nhật OS</span>
+apt update && apt upgrade -y
+
+<span class="comment"># Cài công cụ cơ bản</span>
+apt install -y curl wget nano htop</pre>
+
+    <!-- Step 2: Create HLS user -->
+    <div class="step-title"><span class="step-num">2</span>Tạo user SFTP (bảo mật hơn root)</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Tạo user riêng cho SFTP upload, tránh dùng root:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Tạo user "hlsuser" với thư mục home</span>
+adduser hlsuser
+<span class="comment"># → Nhập password khi được hỏi (nhớ lưu lại!)</span>
+
+<span class="comment"># Tạo thư mục lưu video HLS</span>
+mkdir -p /var/www/hls-storage/hls
+mkdir -p /var/www/hls-storage/thumbnails
+
+<span class="comment"># Gán quyền cho user</span>
+chown -R hlsuser:hlsuser /var/www/hls-storage
+chmod -R 755 /var/www/hls-storage</pre>
+
+    <div class="info-box">
+      💡 <strong>Dùng root cũng được</strong> nếu bạn muốn đơn giản. Nhưng tạo user riêng sẽ an toàn hơn khi password bị lộ — hacker chỉ truy cập được thư mục HLS, không phải toàn bộ server.
+    </div>
+
+    <!-- Step 3: Install Nginx -->
+    <div class="step-title"><span class="step-num">3</span>Cài Nginx — phục vụ file HLS ra public</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Cài Nginx</span>
+apt install -y nginx
+
+<span class="comment"># Kiểm tra Nginx hoạt động</span>
+systemctl status nginx
+<span class="comment"># → Active (running) ✅</span></pre>
+
+    <!-- Step 4: Configure Nginx -->
+    <div class="step-title"><span class="step-num">4</span>Cấu hình Nginx cho HLS Streaming</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Tạo file config mới:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Tạo file config</span>
+nano /etc/nginx/sites-available/hls-storage</pre>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Dán nội dung sau (hoặc lấy từ nút <strong>Copy Nginx Config</strong> trong <a href="/admin/servers" style="color:var(--accent);">Quản lí Server</a>):</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>server {
     listen 80;
-    server_name <span class="string">your-storage-domain.com</span>;
+    server_name <span class="string">_</span>;  <span class="comment"># hoặc domain của bạn</span>
 
     root /var/www/<span class="string">hls-storage</span>;
     autoindex off;
 
+    <span class="comment"># CORS — cho phép trình duyệt phát HLS</span>
     location / {
         add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS";
         add_header Cache-Control "public, max-age=31536000";
+
+        <span class="comment"># OPTIONS preflight</span>
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin *;
+            add_header Access-Control-Allow-Methods "GET, OPTIONS";
+            add_header Access-Control-Max-Age 86400;
+            add_header Content-Length 0;
+            return 204;
+        }
     }
 
+    <span class="comment"># Playlist .m3u8 — không cache lâu</span>
     location ~ \.m3u8$ {
         add_header Access-Control-Allow-Origin *;
         add_header Cache-Control "no-cache";
     }
-}
-</pre>
 
-    <div class="step-title"><span class="step-num">3</span>Thêm server vào hệ thống</div>
-    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Vào <a href="/admin/servers/add" style="color:var(--accent);">Thêm Server</a> và điền:</p>
-    <ul style="font-size:13px;color:#b0b0d0;line-height:2;padding-left:20px;">
-      <li><strong>Label:</strong> tên hiển thị (vd: "Hetzner AX41")</li>
-      <li><strong>IP / Host:</strong> IP của storage server</li>
-      <li><strong>Port:</strong> 22 (SFTP)</li>
-      <li><strong>Username:</strong> root hoặc user SFTP</li>
-      <li><strong>Password / SSH Key:</strong> passphrase SSH</li>
-      <li><strong>Storage Path:</strong> /var/www/hls-storage</li>
-      <li><strong>Public URL:</strong> http://your-storage-ip hoặc CDN URL</li>
-    </ul>
+    <span class="comment"># Chặn truy cập các file không cần thiết</span>
+    location ~ /\. {
+        deny all;
+    }
+
+    <span class="comment"># Giới hạn bandwidth (tuỳ chọn)</span>
+    <span class="comment"># limit_rate 5m;  # 5MB/s mỗi connection</span>
+}</pre>
+
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Kích hoạt config</span>
+ln -sf /etc/nginx/sites-available/hls-storage /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default  <span class="comment"># Xoá config mặc định</span>
+
+<span class="comment"># Test config hợp lệ</span>
+nginx -t
+<span class="comment"># → syntax is ok ✅</span>
+
+<span class="comment"># Reload nginx</span>
+systemctl reload nginx</pre>
+
+    <!-- Step 5: Test -->
+    <div class="step-title"><span class="step-num">5</span>Kiểm tra Nginx hoạt động</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Tạo file test</span>
+echo "HLS Storage OK" > /var/www/hls-storage/test.txt
+
+<span class="comment"># Test từ máy local hoặc server khác</span>
+curl http://<span class="string">&lt;STORAGE_IP&gt;</span>/test.txt
+<span class="comment"># → "HLS Storage OK" ✅</span>
+
+<span class="comment"># Xoá file test</span>
+rm /var/www/hls-storage/test.txt</pre>
+
+    <!-- Step 6: Firewall -->
+    <div class="step-title"><span class="step-num">6</span>Cấu hình Firewall</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Mở SSH</span>
+ufw allow 22
+
+<span class="comment"># Mở HTTP (Nginx phục vụ HLS)</span>
+ufw allow 80
+
+<span class="comment"># Mở HTTPS (nếu dùng SSL)</span>
+ufw allow 443
+
+<span class="comment"># Bật firewall</span>
+ufw enable
+ufw status</pre>
 
     <div class="warn-box">
-      ⚠️ Trạng thái SFTP được kiểm tra tự động mỗi 1 phút. Nhấn nút ping để kiểm tra thủ công. Nhấn nút copy để lấy Nginx config cho từng server.
+      ⚠️ <strong>Lưu ý:</strong> Port 22 (SSH/SFTP) phải luôn được mở. Nếu dùng Cloudflare CDN, port 80/443 không cần mở cho public — chỉ cần mở cho Cloudflare IPs.
     </div>
+
+    <!-- Step 7: SSL (Optional) -->
+    <div class="step-title"><span class="step-num">7</span>(Tuỳ chọn) Cài SSL/HTTPS với Let's Encrypt</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Nếu dùng domain (không qua Cloudflare proxy), cài SSL miễn phí:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Cài Certbot</span>
+apt install -y certbot python3-certbot-nginx
+
+<span class="comment"># Tạo SSL cho domain</span>
+certbot --nginx -d <span class="string">&lt;YOUR_DOMAIN&gt;</span>
+<span class="comment"># → Nhập email, đồng ý điều khoản → auto config SSL</span>
+
+<span class="comment"># Test auto-renew</span>
+certbot renew --dry-run</pre>
+
+    <div class="info-box">
+      💡 Nếu dùng <strong>Cloudflare Proxy</strong> (đám mây cam), bạn <strong>không cần</strong> cài SSL trên server — Cloudflare tự xử lý SSL. Chỉ cần Nginx listen port 80.
+    </div>
+
+    <!-- Step 8: Add to App -->
+    <div class="step-title"><span class="step-num">8</span>Thêm Storage Server vào hệ thống</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Vào <a href="/admin/servers/add" style="color:var(--accent);">Thêm Server</a> và điền:</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:14px;">
+        <div style="font-size:11px;color:#8888aa;text-transform:uppercase;margin-bottom:6px;">Thông tin kết nối SFTP</div>
+        <div style="font-size:13px;color:#b0b0d0;line-height:2;">
+          <strong>Label:</strong> tên hiển thị (VD: "Hetzner AX41")<br>
+          <strong>IP / Host:</strong> IP public của storage server<br>
+          <strong>Port:</strong> 22 (SFTP mặc định)<br>
+          <strong>Username:</strong> <code>hlsuser</code> (hoặc root)<br>
+          <strong>Password:</strong> mật khẩu của user SFTP
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:14px;">
+        <div style="font-size:11px;color:#8888aa;text-transform:uppercase;margin-bottom:6px;">Đường dẫn & URL</div>
+        <div style="font-size:13px;color:#b0b0d0;line-height:2;">
+          <strong>Storage Path:</strong> <code>/var/www/hls-storage</code><br>
+          <strong>CDN URL:</strong> <code>https://cdn.yourdomain.com</code><br>
+          <span style="font-size:12px;color:#8888aa;">→ Nếu chưa có CDN, để trống hoặc dùng:<br>
+          <code>http://&lt;STORAGE_IP&gt;</code></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      Sau khi thêm, nhấn nút <strong style="color:#22c55e;">Ping</strong> để kiểm tra kết nối SFTP. Nếu hiện <strong style="color:#22c55e;">Live</strong> → sẵn sàng! ✅
+    </div>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid var(--border);margin:28px 0;"></div>
+
+    <!-- Troubleshooting -->
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">🔍 Xử lý sự cố Storage Server</div>
+
+    <div style="display:grid;gap:12px;">
+      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:#ef4444;margin-bottom:6px;">❌ SFTP không kết nối được</div>
+        <ul style="font-size:12.5px;color:#b0b0d0;line-height:1.9;padding-left:18px;margin:0;">
+          <li>Kiểm tra IP đúng chưa: <code>ping &lt;STORAGE_IP&gt;</code></li>
+          <li>Kiểm tra SSH service: <code>systemctl status sshd</code></li>
+          <li>Kiểm tra firewall: <code>ufw status</code> — port 22 phải allow</li>
+          <li>Kiểm tra user/password: thử SSH thủ công <code>ssh hlsuser@&lt;STORAGE_IP&gt;</code></li>
+          <li>Kiểm tra password đúng trên App (trang Quản lí Server)</li>
+        </ul>
+      </div>
+
+      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:#ef4444;margin-bottom:6px;">❌ Video upload xong nhưng không phát được</div>
+        <ul style="font-size:12.5px;color:#b0b0d0;line-height:1.9;padding-left:18px;margin:0;">
+          <li>Kiểm tra file HLS tồn tại: <code>ls -la /var/www/hls-storage/hls/&lt;VIDEO_ID&gt;/</code></li>
+          <li>Kiểm tra Nginx chạy: <code>systemctl status nginx</code></li>
+          <li>Test truy cập từ bên ngoài: <code>curl http://&lt;STORAGE_IP&gt;/hls/&lt;ID&gt;/master.m3u8</code></li>
+          <li>Kiểm tra CORS: response phải có <code>Access-Control-Allow-Origin: *</code></li>
+          <li>Kiểm tra quyền file: <code>chmod -R 755 /var/www/hls-storage</code></li>
+        </ul>
+      </div>
+
+      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:#ef4444;margin-bottom:6px;">❌ Hết dung lượng đĩa</div>
+        <ul style="font-size:12.5px;color:#b0b0d0;line-height:1.9;padding-left:18px;margin:0;">
+          <li>Kiểm tra: <code>df -h</code></li>
+          <li>Xem thư mục nào chiếm nhiều: <code>du -sh /var/www/hls-storage/hls/*/ | sort -rh | head -20</code></li>
+          <li>Xoá video cũ hoặc mở rộng đĩa</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid var(--border);margin:28px 0;"></div>
+
+    <!-- Quick reference -->
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">📘 Lệnh thường dùng trên Storage Server</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Kiểm tra dung lượng</span>
+df -h
+
+<span class="comment"># Kiểm tra Nginx</span>
+systemctl status nginx
+nginx -t                            <span class="comment"># Test config</span>
+systemctl reload nginx              <span class="comment"># Reload config</span>
+
+<span class="comment"># Xem access log (debug)</span>
+tail -f /var/log/nginx/access.log
+
+<span class="comment"># Kiểm tra file HLS cho 1 video</span>
+ls -la /var/www/hls-storage/hls/<span class="string">&lt;VIDEO_ID&gt;</span>/
+
+<span class="comment"># Đếm tổng số file HLS trên server</span>
+find /var/www/hls-storage/hls -name "*.ts" | wc -l
+
+<span class="comment"># Kiểm tra quyền thư mục</span>
+ls -la /var/www/hls-storage/</pre>
   </div>
 
   <!-- ─── TAB: ENCODE WORKERS ─── -->
