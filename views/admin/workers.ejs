@@ -61,7 +61,6 @@
                                             <th>Kết nối</th>
                                             <th>Trạng thái</th>
                                             <th>Job hiện tại</th>
-                                            <th>Storage OK</th>
                                             <th>Uptime</th>
                                             <th></th>
                                         </tr>
@@ -101,16 +100,6 @@
                                                             <span style="color:var(--text-muted)">—</span>
                                                             <% } %>
                                                 </td>
-                                                <td>
-                                                    <% if (!w.reachable) { %>
-                                                        <span style="color:var(--text-muted)">—</span>
-                                                        <% } else if (w.storageOk) { %>
-                                                            <span style="color:#34d399;">✅</span>
-                                                            <% } else { %>
-                                                                <span style="color:#f87171;"
-                                                                    title="Storage Box chưa mount?">❌ Chưa mount</span>
-                                                                <% } %>
-                                                </td>
                                                 <td style="font-size:12px;color:var(--text-muted);">
                                                     <% if (w.uptime) { %>
                                                         <%= Math.floor(w.uptime / 3600) %>h <%= Math.floor((w.uptime %
@@ -135,38 +124,57 @@
                 <div class="card" style="margin-top:20px;">
                     <div class="card-title">📋 Hướng dẫn Deploy Worker</div>
                     <div style="margin-top:12px;font-size:13px;color:var(--text-secondary);line-height:1.8;">
-                        <strong>1. Trên encode server (AX41-NVMe):</strong>
+
+                        <div
+                            style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.25);border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+                            <strong style="color:var(--accent);">📌 Luồng hoạt động:</strong>
+                            <span style="display:block;margin-top:4px;">App (VPS) nhận file → gửi sang <strong>Encode
+                                    Worker</strong> qua HTTP → Worker encode HLS → Worker <strong>SFTP lên Storage
+                                    Server</strong> (Hetzner dedicated) → báo callback về App.</span>
+                            <span style="display:block;margin-top:4px;color:var(--text-muted);">Không cần mount Storage
+                                Box. Worker chỉ cần Node.js + FFmpeg.</span>
+                        </div>
+
+                        <strong>🆕 Lần đầu cài đặt</strong>
                         <pre
-                            style="background:var(--bg-input);border-radius:6px;padding:14px;margin:8px 0;overflow-x:auto;font-size:12px;"><code># Cài FFmpeg + Node.js
+                            style="background:var(--bg-input);border-radius:6px;padding:14px;margin:8px 0;overflow-x:auto;font-size:12px;"><code># 1. Cài FFmpeg + Node.js trên encode server
 apt update && apt install -y ffmpeg nodejs npm
 
-# Copy thư mục /worker từ app lên encode server
-scp -r /opt/hls-app/worker root@&lt;WORKER_IP&gt;:/opt/hls-worker
+# 2. Copy thư mục worker lên server
+scp -r /path/to/app/worker root@&lt;WORKER_IP&gt;:/opt/hls-worker
 
-# Cài dependencies
-cd /opt/hls-worker && npm install
+# 3. Cài dependencies (bao gồm multer)
+cd /opt/hls-worker
+npm install
 
-# Mount Storage Box (cùng mount point với app server!)
-apt install -y sshfs
-mkdir -p /mnt/storagebox
-sshfs -o port=23 u123456@u123456.your-storagebox.de:/home /mnt/storagebox</code></pre>
+# 4. Tạo file .env
+cat &gt; .env &lt;&lt; EOF
+WORKER_PORT=4000
+WORKER_TOKEN=your-secret-token        # phải khớp với token ở form trên
+APP_URL=http://&lt;APP_SERVER_IP&gt;:3000   # URL của app server
+WORKER_TMP_DIR=/tmp/worker_uploads
+EOF
 
-                        <strong>2. Tạo file <code>.env</code> trên encode server:</strong>
-                        <pre
-                            style="background:var(--bg-input);border-radius:6px;padding:14px;margin:8px 0;overflow-x:auto;font-size:12px;"><code>WORKER_PORT=4000
-WORKER_TOKEN=your-secret-token-here        # Điền vào form trên
-APP_URL=http://&lt;APP_SERVER_IP&gt;:3000        # URL app server để báo progress
-HLS_OUTPUT_DIR=/mnt/storagebox/hls
-UPLOAD_DIR=/mnt/storagebox/uploads</code></pre>
-
-                        <strong>3. Chạy worker với PM2:</strong>
-                        <pre
-                            style="background:var(--bg-input);border-radius:6px;padding:14px;margin:8px 0;overflow-x:auto;font-size:12px;"><code>cd /opt/hls-worker
+# 5. Chạy với PM2
 npm install -g pm2
 pm2 start server.js --name hls-worker
 pm2 save && pm2 startup</code></pre>
 
-                        <strong>4. Thêm worker ở form trên với URL: <code>http://&lt;WORKER_IP&gt;:4000</code></strong>
+                        <strong>🔄 Cập nhật code (khi worker đang chạy)</strong>
+                        <pre
+                            style="background:var(--bg-input);border-radius:6px;padding:14px;margin:8px 0;overflow-x:auto;font-size:12px;"><code># Copy file server.js mới lên server
+scp /path/to/app/worker/server.js root@&lt;WORKER_IP&gt;:/opt/hls-worker/server.js
+
+# SSH vào worker, cài thêm package nếu cần và restart
+ssh root@&lt;WORKER_IP&gt;
+cd /opt/hls-worker
+npm install        # cài multer và các package mới nếu có
+pm2 restart hls-worker
+pm2 logs hls-worker --lines 20   # kiểm tra logs</code></pre>
+
+                        <strong>✅ Thêm worker vào hệ thống:</strong>
+                        <span style="display:block;margin-top:4px;">Điền URL <code>http://&lt;WORKER_IP&gt;:4000</code>
+                            và token vào form phía trên.</span>
                     </div>
                 </div>
 

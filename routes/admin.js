@@ -13,6 +13,18 @@ const { uploadHlsToServer } = require('../services/sftp');
 const { getAllViewerCounts } = require('../services/viewers');
 const { encodeQueue } = require('../services/queue');
 const workerPool = require('../services/workerPool');
+const { pickLeastLoadedServer, getServerStats } = require('../services/serverRouter');
+const { purgeVideoCache } = require('../services/cfCache');
+
+// In-memory SFTP upload progress: videoId -> { done, total, file }
+const sftpProgress = new Map();
+
+/** Read configurable page size from settings, default 20 */
+function getPageSize() {
+    const raw = getSetting('admin_page_size');
+    const n = parseInt(raw);
+    return (!isNaN(n) && n >= 5 && n <= 200) ? n : 20;
+}
 
 
 // Apply requireAuth to ALL admin routes
@@ -118,7 +130,8 @@ router.get('/upload', requireUploader, (req, res) => {
     const db = getDb();
     const servers = db.prepare('SELECT * FROM servers WHERE is_active = 1 ORDER BY label').all();
     const noServers = servers.length === 0;
-    res.render('admin/upload', { title: 'Upload Video', servers, noServers, error: null, success: null });
+    const leastLoaded = servers.length > 0 ? pickLeastLoadedServer() : null;
+    res.render('admin/upload', { title: 'Upload Video', servers, noServers, leastLoaded, error: null, success: null });
 });
 
 // POST /admin/upload - Handle video upload (uploader + admin)
@@ -128,24 +141,38 @@ router.post('/upload', requireUploader, (req, res) => {
         const db = getDb();
         const servers = db.prepare('SELECT * FROM servers WHERE is_active = 1 ORDER BY label').all();
         const noServers = servers.length === 0;
+        const leastLoaded = servers.length > 0 ? pickLeastLoadedServer() : null;
+
+        // Helper để render lại form với lỗi
+        const renderError = (msg) => res.render('admin/upload', {
+            title: 'Upload Video', servers, noServers, leastLoaded, error: msg, success: null
+        });
 
         if (err) {
-            return res.render('admin/upload', { title: 'Upload Video', servers, noServers, error: err.message, success: null });
+            return renderError(err.message);
         }
 
         try {
             const { title, description, upload_type, remote_url, server_id, thumb_mode } = req.body;
 
             if (!title || !title.trim()) {
-                return res.render('admin/upload', { title: 'Upload Video', servers, noServers, error: 'Vui lòng nhập tiêu đề video', success: null });
+                return renderError('Vui lòng nhập tiêu đề video');
             }
             if (!server_id) {
-                return res.render('admin/upload', { title: 'Upload Video', servers, noServers, error: 'Vui lòng chọn server lưu trữ. Nếu chưa có server, hãy thêm server trước.', success: null });
+                return renderError('Vui lòng chọn server lưu trữ. Nếu chưa có server, hãy thêm server trước.');
             }
 
-            const selectedServer = db.prepare('SELECT * FROM servers WHERE id = ? AND is_active = 1').get(server_id);
+            // Auto-pick: chọn server ít phim nhất
+            let resolvedServerId = server_id;
+            if (server_id === 'auto') {
+                const auto = pickLeastLoadedServer();
+                if (!auto) return renderError('Không có server nào khả dụng.');
+                resolvedServerId = auto.id;
+            }
+
+            const selectedServer = db.prepare('SELECT * FROM servers WHERE id = ? AND is_active = 1').get(resolvedServerId);
             if (!selectedServer) {
-                return res.render('admin/upload', { title: 'Upload Video', servers, noServers, error: 'Server không hợp lệ hoặc đã bị vô hiệu hoá.', success: null });
+                return renderError('Server không hợp lệ hoặc đã bị vô hiệu hoá.');
             }
 
             let videoFilePath, videoFileName;
@@ -156,13 +183,13 @@ router.post('/upload', requireUploader, (req, res) => {
                     videoFilePath = result.filePath;
                     videoFileName = result.fileName;
                 } catch (dlErr) {
-                    return res.render('admin/upload', { title: 'Upload Video', servers, noServers, error: `Lỗi tải file remote: ${dlErr.message}`, success: null });
+                    return renderError(`Lỗi tải file remote: ${dlErr.message}`);
                 }
             } else if (req.files && req.files.video && req.files.video[0]) {
                 videoFilePath = req.files.video[0].path;
                 videoFileName = req.files.video[0].filename;
             } else {
-                return res.render('admin/upload', { title: 'Upload Video', servers, noServers, error: 'Vui lòng chọn file video hoặc nhập URL', success: null });
+                return renderError('Vui lòng chọn file video hoặc nhập URL');
             }
 
             const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) as max_order FROM videos').get();
@@ -178,7 +205,7 @@ router.post('/upload', requireUploader, (req, res) => {
             const result = db.prepare(`
         INSERT INTO videos (title, description, video_file, server_id, uploaded_by, status, qualities, visibility, sort_order)
         VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)
-      `).run(title.trim(), description || '', videoFileName, server_id, req.session.user.id, qualitiesJson, req.body.visibility || 'public', maxOrder.max_order + 1);
+      `).run(title.trim(), description || '', videoFileName, resolvedServerId, req.session.user.id, qualitiesJson, req.body.visibility || 'public', maxOrder.max_order + 1);
 
             const videoId = result.lastInsertRowid;
             const queuePos = encodeQueue.push({ videoId, videoFilePath, videoFileName, autoThumb: thumb_mode !== 'upload', qualities });
@@ -190,6 +217,7 @@ router.post('/upload', requireUploader, (req, res) => {
                 title: 'Upload Video',
                 servers,
                 noServers,
+                leastLoaded,
                 error: null,
                 success: `Video "${title}" đã được upload lên [${selectedServer.label}]! ${queueMsg}`
             });
@@ -197,10 +225,12 @@ router.post('/upload', requireUploader, (req, res) => {
         } catch (e) {
             console.error('[Upload Error]', e);
             const servers2 = db.prepare('SELECT * FROM servers WHERE is_active = 1 ORDER BY label').all();
-            return res.render('admin/upload', { title: 'Upload Video', servers: servers2, noServers: servers2.length === 0, error: `Lỗi server: ${e.message}`, success: null });
+            const leastLoaded2 = servers2.length > 0 ? pickLeastLoadedServer() : null;
+            return res.render('admin/upload', { title: 'Upload Video', servers: servers2, noServers: servers2.length === 0, leastLoaded: leastLoaded2, error: `Lỗi server: ${e.message}`, success: null });
         }
     });
 });
+
 
 // POST /admin/upload-thumbnail (uploader + admin)
 router.post('/upload-thumbnail', requireUploader, thumbUpload.single('thumbnail'), (req, res) => {
@@ -211,7 +241,8 @@ router.post('/upload-thumbnail', requireUploader, thumbUpload.single('thumbnail'
 });
 
 /**
- * Process video: multi-quality HLS encode → upload lên server được chọn (R2 hoặc SFTP)
+ * Process video: kiểm tra encode worker rảnh → gửi file + serverConfig sang worker encode và SFTP.
+ * Nếu không có worker → fallback encode local + SFTP từ app.
  */
 async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = true, qualities = ['sd']) {
     const db = getDb();
@@ -234,7 +265,36 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
             try { qualities = JSON.parse(video.qualities || '["sd"]'); } catch (e) { qualities = ['sd']; }
         }
 
-        // Step 1: Encode HLS locally
+        // ── Thử dispatch sang encode worker trước ──
+        try {
+            const worker = await workerPool.findIdleWorker();
+            if (worker) {
+                console.log(`[Process] Dispatching file to worker ${worker.label} for videoId=${videoId}...`);
+                const ok = await workerPool.dispatchFileToWorker(worker, {
+                    videoId,
+                    videoFilePath,
+                    qualities,
+                    autoThumb,
+                }, serverInfo);
+
+                if (ok) {
+                    // Worker nhận rồi — nó sẽ encode + SFTP + callback về /api/worker/done
+                    // Queue sẽ được giải phóng khi callback đến
+                    const { encodeQueue } = require('../services/queue');
+                    encodeQueue.remoteJobs.set(videoId, { worker, job: { videoId }, dispatchedAt: new Date() });
+                    console.log(`[Process] Video ${videoId} dispatched to worker ${worker.label}, waiting for callback...`);
+                    return; // Xong — callback worker sẽ update DB
+                } else {
+                    console.warn(`[Process] Worker dispatch thất bại, fallback encode local...`);
+                }
+            } else {
+                console.log(`[Process] Không có worker rảnh, encode local...`);
+            }
+        } catch (workerErr) {
+            console.warn(`[Process] Lỗi khi tìm/dispatch worker:`, workerErr.message, '— fallback encode local...');
+        }
+
+        // ── Fallback: encode local + SFTP ──
         const localHlsBase = path.join(STORAGE_DIR, 'hls');
         fs.mkdirSync(localHlsBase, { recursive: true });
         let lastPercent = -1;
@@ -255,13 +315,14 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
         let m3u8Url;
         const iframeUrl = `/embed/${videoId}`;
 
-        // Step 2: Upload lên server được chọn
-        db.prepare("UPDATE videos SET status = 'uploading', progress = 99 WHERE id = ?").run(videoId);
-
         // Upload qua SFTP (Hetzner, VPS...)
+        db.prepare("UPDATE videos SET status = 'uploading', progress = 99 WHERE id = ?").run(videoId);
+        sftpProgress.set(videoId, { done: 0, total: 0, file: '' });
         try {
-            await uploadHlsToServer(serverInfo, localHlsDir, videoId.toString());
-            // Dùng CDN Pool (nhiều CF accounts) nếu có, fallback về cdn_url hoặc IP
+            await uploadHlsToServer(serverInfo, localHlsDir, videoId.toString(), (done, total, file) => {
+                sftpProgress.set(videoId, { done, total, file });
+            });
+            sftpProgress.delete(videoId);
             const { buildM3u8Url } = require('../services/cdnPool');
             m3u8Url = buildM3u8Url(serverInfo.id, videoId, serverInfo);
             console.log(`[SFTP] Upload complete: ${m3u8Url}`);
@@ -274,22 +335,33 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
             throw sftpErr;
         }
 
-        // Step 3: Thumbnail
+        // Thumbnail (phải chạy trước cleanup vì cần file video gốc)
         let thumbnailName = '';
         if (autoThumb) {
             try { thumbnailName = `thumb_${videoId}.jpg`; await generateThumbnail(videoFilePath, THUMB_DIR, thumbnailName); }
             catch (e) { console.error('[Thumb] failed:', e.message); thumbnailName = ''; }
         }
 
-        // Step 4: Mark ready
+        // Cleanup local files to free disk space on app server
+        try {
+            if (fs.existsSync(videoFilePath)) {
+                fs.unlinkSync(videoFilePath);
+                console.log(`[Cleanup] Deleted original video: ${videoFilePath}`);
+            }
+        } catch (e) { console.warn(`[Cleanup] Could not delete original video:`, e.message); }
+        try {
+            fs.rmSync(localHlsDir, { recursive: true, force: true });
+            console.log(`[Cleanup] Deleted local HLS dir: ${localHlsDir}`);
+        } catch (e) { console.warn(`[Cleanup] Could not delete HLS dir:`, e.message); }
+
+        // Mark ready
         db.prepare(`UPDATE videos SET m3u8_url=?, iframe_url=?, thumbnail=?, status='ready', progress=100,
             updated_at=datetime('now','localtime') WHERE id=?`)
             .run(m3u8Url, iframeUrl, thumbnailName, videoId);
 
-        console.log(`[Process] Video ${videoId} ready → ${m3u8Url} [${qualities.join(', ')}]`);
+        console.log(`[Process] Video ${videoId} ready (local encode) → ${m3u8Url} [${qualities.join(', ')}]`);
     } catch (err) {
         console.error(`[Process] Video ${videoId} failed:`, err.message);
-        // Only log to error_logs if it wasn't already logged by a specific catch above
         if (!err._logged) {
             addErrorLog('unknown', {
                 videoId, videoTitle: '',
@@ -300,31 +372,135 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
     }
 }
 
+
 // Wire the queue processor
 encodeQueue.setProcessor(processVideo);
 
+// GET /admin/api/sftp-progress/:id — current SFTP file-upload progress
+router.get('/api/sftp-progress/:id', requireAuth, (req, res) => {
+    const videoId = parseInt(req.params.id);
+    const prog = sftpProgress.get(videoId);
+    if (prog) {
+        return res.json({ uploading: true, done: prog.done, total: prog.total, file: prog.file });
+    }
+    return res.json({ uploading: false, done: 0, total: 0, file: '' });
+});
+
+
+// ── Process Monitor ────────────────────────────────────────────────────────────
+
+// GET /admin/processes — Render process monitor page
+router.get('/processes', requireAdmin, (req, res) => {
+    res.render('admin/processes', { title: 'Theo dõi Tiến trình' });
+});
+
+// GET /admin/api/processes/snapshot — Live snapshot of all running processes
+router.get('/api/processes/snapshot', requireAdmin, async (req, res) => {
+    const db = getDb();
+    const { encodeQueue } = require('../services/queue');
+    const { getAllWorkersStatus } = require('../services/workerPool');
+
+    // 1. Encode queue state
+    const queueSnapshot = {
+        running: encodeQueue.running,
+        currentId: encodeQueue.current,
+        pending: encodeQueue.snapshot(),
+    };
+
+    // 2. Current video being encoded — get title + progress from DB
+    let currentVideo = null;
+    if (encodeQueue.current) {
+        currentVideo = db.prepare('SELECT id, title, progress, status FROM videos WHERE id = ?').get(encodeQueue.current);
+    }
+
+    // 3. SFTP transfers in progress
+    const sftpList = [];
+    for (const [videoId, prog] of sftpProgress.entries()) {
+        const v = db.prepare('SELECT id, title FROM videos WHERE id = ?').get(videoId);
+        sftpList.push({
+            videoId,
+            title: v ? v.title : `Video #${videoId}`,
+            done: prog.done,
+            total: prog.total,
+            file: prog.file,
+            pct: prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0,
+        });
+    }
+
+    // 4. Remote worker jobs (dispatched, waiting callback)
+    const remoteJobsList = [];
+    for (const [videoId, info] of encodeQueue.remoteJobs.entries()) {
+        const v = db.prepare('SELECT id, title FROM videos WHERE id = ?').get(videoId);
+        remoteJobsList.push({
+            videoId,
+            title: v ? v.title : `Video #${videoId}`,
+            worker: info.worker ? info.worker.label : '—',
+            workerUrl: info.worker ? info.worker.url : '',
+            dispatchedAt: info.dispatchedAt || null,
+        });
+    }
+
+    // 5. Workers live status
+    let workers = [];
+    try {
+        workers = await getAllWorkersStatus();
+    } catch (_) {}
+
+    // 6. Recent errors (last 10)
+    const recentErrors = db.prepare(`
+        SELECT id, type, video_id, video_title, server_label, message, created_at
+        FROM error_logs ORDER BY created_at DESC LIMIT 10
+    `).all();
+
+    // 7. Videos currently in processing/uploading/queued
+    const activeVideos = db.prepare(`
+        SELECT id, title, status, progress, updated_at
+        FROM videos
+        WHERE status IN ('processing','uploading','queued')
+        ORDER BY updated_at DESC
+    `).all();
+
+    res.json({
+        ts: Date.now(),
+        queue: queueSnapshot,
+        currentVideo,
+        sftpList,
+        remoteJobs: remoteJobsList,
+        workers,
+        recentErrors,
+        activeVideos,
+    });
+});
 
 
 // GET /admin/videos - Video management list (all roles see all videos)
 router.get('/videos', requireAuth, (req, res) => {
     const db = getDb();
-    const user = req.session.user;
+    const pageSize = getPageSize();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const offset = (page - 1) * pageSize;
 
-    // Tất cả roles đều thấy toàn bộ video
+    // Count total
+    const total = db.prepare('SELECT COUNT(*) as cnt FROM videos').get().cnt;
+
     const videos = db.prepare(`
       SELECT v.*, s.label as server_label, u.username as uploader_name
-      FROM videos v 
-      LEFT JOIN servers s ON v.server_id = s.id 
+      FROM videos v
+      LEFT JOIN servers s ON v.server_id = s.id
       LEFT JOIN users u ON v.uploaded_by = u.id
       ORDER BY v.sort_order DESC, v.created_at DESC
-    `).all();
+      LIMIT ? OFFSET ?
+    `).all(pageSize, offset);
 
-    // Lấy danh sách video_id đang có pending delete request (để disable nút)
     const pendingVideoIds = db.prepare(
         `SELECT video_id FROM delete_requests WHERE status='pending'`
     ).all().map(r => r.video_id);
 
-    res.render('admin/videos', { title: 'Quản lí Video', videos, pendingVideoIds });
+    res.render('admin/videos', {
+        title: 'Quản lí Video', videos, pendingVideoIds,
+        currentPage: page, totalPages: Math.ceil(total / pageSize),
+        total, pageSize,
+    });
 });
 
 // GET /admin/videos/:id/edit - Video edit page (admin only)
@@ -352,11 +528,18 @@ router.post('/videos/:id/edit', requireAdmin, (req, res) => {
 });
 
 // POST /admin/videos/:id/delete - Delete video (admin only)
-router.post('/videos/:id/delete', requireAdmin, (req, res) => {
+router.post('/videos/:id/delete', requireAdmin, async (req, res) => {
     const db = getDb();
     const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
 
     if (video) {
+        // Purge CF cache trước khi xóa (fire & forget)
+        if (video.server_id) {
+            purgeVideoCache(video.id, video.server_id).catch(e =>
+                console.error(`[CFCache] Purge failed for video ${video.id}:`, e.message)
+            );
+        }
+
         const hlsDir = path.join(__dirname, '..', 'storage', 'hls', video.id.toString());
         if (fs.existsSync(hlsDir)) {
             fs.rmSync(hlsDir, { recursive: true, force: true });
@@ -376,6 +559,19 @@ router.post('/videos/:id/delete', requireAdmin, (req, res) => {
     }
 
     res.redirect('/admin/videos');
+});
+
+// POST /admin/api/videos/:id/purge-cache - Purge CF cache thủ công
+router.post('/api/videos/:id/purge-cache', requireAdmin, async (req, res) => {
+    const db = getDb();
+    const video = db.prepare('SELECT id, server_id, title FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.json({ ok: false, message: 'Video không tồn tại.' });
+    try {
+        const result = await purgeVideoCache(video.id, video.server_id);
+        res.json({ ok: result.ok, purged: result.purged, errors: result.errors, message: result.ok ? `Đã purge ${result.purged} domain CF thành công.` : `Purge xong với ${result.errors.length} lỗi.` });
+    } catch (e) {
+        res.json({ ok: false, message: e.message });
+    }
 });
 
 // POST /admin/videos/:id/cancel - Hủy upload/sử lý và xóa rác
@@ -433,6 +629,140 @@ router.post('/videos/:id/cancel', requireAuth, (req, res) => {
     res.redirect('/admin/videos');
 });
 
+// POST /admin/api/videos/:id/cancel — JSON API (dùng bởi fetch() trong videos.ejs)
+router.post('/api/videos/:id/cancel', requireAuth, (req, res) => {
+    const db = getDb();
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
+
+    if (!video) return res.json({ ok: false, message: 'Video không tồn tại.' });
+
+    // eslint-disable-next-line eqeqeq
+    if (req.session.user.role !== 'administrator' && video.uploaded_by != req.session.user.id) {
+        return res.status(403).json({ ok: false, message: 'Không có quyền hủy video này.' });
+    }
+
+    // 1. Cancel queue / remote worker
+    const { encodeQueue } = require('../services/queue');
+    encodeQueue.cancel(video.id);
+
+    // 2. Kill local FFmpeg nếu có
+    try {
+        const { killFFmpeg } = require('../services/ffmpeg');
+        killFFmpeg(video.id.toString());
+        killFFmpeg(video.id);
+    } catch (e) { /* ignore */ }
+
+    // 3. Xóa DB
+    db.prepare('DELETE FROM videos WHERE id = ?').run(video.id);
+
+    // 4. Xóa file tạm (setTimeout để FFmpeg nhả lock trên Windows)
+    const hlsDir = path.join(__dirname, '..', 'storage', 'hls', video.id.toString());
+    setTimeout(() => {
+        try {
+            if (fs.existsSync(hlsDir)) fs.rmSync(hlsDir, { recursive: true, force: true });
+            const UPLOAD_DIR2 = path.join(__dirname, '..', 'uploads', 'videos');
+            const THUMB_DIR2 = path.join(__dirname, '..', 'uploads', 'thumbnails');
+            if (video.video_file) { const vp = path.join(UPLOAD_DIR2, video.video_file); if (fs.existsSync(vp)) fs.unlinkSync(vp); }
+            if (video.thumbnail) { const tp = path.join(THUMB_DIR2, video.thumbnail); if (fs.existsSync(tp)) fs.unlinkSync(tp); }
+        } catch (err) {
+            console.error(`[Cancel API] Cleanup error video ${video.id}:`, err.message);
+        }
+    }, 1500);
+
+    console.log(`[Cancel API] Video ${video.id} cancelled by user ${req.session.user.id}`);
+    res.json({ ok: true });
+});
+
+// POST /admin/api/videos/:id/retry — Re-queue a video in error state
+router.post('/api/videos/:id/retry', requireAdmin, (req, res) => {
+    const db = getDb();
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.json({ ok: false, message: 'Video không tồn tại.' });
+    if (!['error', 'uploading', 'queued'].includes(video.status)) {
+        return res.json({ ok: false, message: `Không thể retry video ở trạng thái "${video.status}".` });
+    }
+
+    // Reset status and re-enqueue
+    db.prepare("UPDATE videos SET status='queued', progress=0, updated_at=datetime('now','localtime') WHERE id=?").run(video.id);
+
+    const qualities = (() => { try { return JSON.parse(video.qualities || '["sd"]'); } catch { return ['sd']; } })();
+    const videoFilePath = path.join(UPLOAD_DIR, video.video_file || '');
+    const { encodeQueue } = require('../services/queue');
+
+    if (video.video_file && fs.existsSync(videoFilePath)) {
+        // Re-enqueue locally
+        encodeQueue.push({
+            videoId: video.id,
+            videoFilePath,
+            videoFileName: video.video_file,
+            autoThumb: !video.thumbnail,
+            qualities,
+        });
+        console.log(`[Retry] Video ${video.id} re-queued locally`);
+    } else if (video.remote_url || video.gdrive_url) {
+        // Re-enqueue as remote download
+        const src = video.remote_url ? 'remote' : 'gdrive';
+        const srcUrl = video.remote_url || video.gdrive_url;
+        encodeQueue.push({
+            videoId: video.id,
+            videoFilePath: srcUrl,
+            videoFileName: srcUrl,
+            autoThumb: !video.thumbnail,
+            qualities,
+            source: src,
+        });
+        console.log(`[Retry] Video ${video.id} re-queued from ${src}`);
+    } else {
+        return res.json({ ok: false, message: 'Không tìm thấy file gốc để retry.' });
+    }
+
+    res.json({ ok: true });
+});
+
+// POST /admin/api/videos/bulk-cancel — Cancel multiple processing videos
+router.post('/api/videos/bulk-cancel', requireAdmin, (req, res) => {
+    const { ids } = req.body; // array of video IDs
+    if (!Array.isArray(ids) || ids.length === 0) return res.json({ ok: false, message: 'Thiếu danh sách ID.' });
+    const { encodeQueue } = require('../services/queue');
+    const { killFFmpeg } = require('../services/ffmpeg');
+    const db = getDb();
+    let cancelled = 0;
+    for (const id of ids) {
+        const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+        if (!video) continue;
+        encodeQueue.cancel(video.id);
+        try { killFFmpeg(video.id.toString()); killFFmpeg(video.id); } catch (_) {}
+        db.prepare('DELETE FROM videos WHERE id = ?').run(video.id);
+        const hlsDir = path.join(__dirname, '..', 'storage', 'hls', video.id.toString());
+        setTimeout(() => {
+            try { if (fs.existsSync(hlsDir)) fs.rmSync(hlsDir, { recursive: true, force: true }); } catch (_) {}
+        }, 1500);
+        cancelled++;
+    }
+    res.json({ ok: true, cancelled });
+});
+
+// POST /admin/api/videos/bulk-retry — Retry multiple errored videos
+router.post('/api/videos/bulk-retry', requireAdmin, (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.json({ ok: false, message: 'Thiếu danh sách ID.' });
+    const db = getDb();
+    const { encodeQueue } = require('../services/queue');
+    let retried = 0;
+    for (const id of ids) {
+        const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+        if (!video || !['error', 'uploading'].includes(video.status)) continue;
+        db.prepare("UPDATE videos SET status='queued', progress=0, updated_at=datetime('now','localtime') WHERE id=?").run(video.id);
+        const qualities = (() => { try { return JSON.parse(video.qualities || '["sd"]'); } catch { return ['sd']; } })();
+        const videoFilePath = path.join(UPLOAD_DIR, video.video_file || '');
+        if (video.video_file && fs.existsSync(videoFilePath)) {
+            encodeQueue.push({ videoId: video.id, videoFilePath, videoFileName: video.video_file, autoThumb: !video.thumbnail, qualities });
+            retried++;
+        }
+    }
+    res.json({ ok: true, retried });
+});
+
 // POST /admin/videos/:id/push-top - Push video to top (admin only)
 router.post('/videos/:id/push-top', requireAdmin, (req, res) => {
     const db = getDb();
@@ -479,6 +809,10 @@ router.post('/videos/:id/delete-request', requireUploader, (req, res) => {
 // GET /admin/delete-requests — Admin xem danh sách yêu cầu xoá
 router.get('/delete-requests', requireAdmin, (req, res) => {
     const db = getDb();
+    const pageSize = getPageSize();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const offset = (page - 1) * pageSize;
+    const total = db.prepare('SELECT COUNT(*) as cnt FROM delete_requests').get().cnt;
     const requests = db.prepare(`
         SELECT dr.*, v.title as video_title_live, v.thumbnail as video_thumb,
                u.username as requester_name,
@@ -488,15 +822,16 @@ router.get('/delete-requests', requireAdmin, (req, res) => {
         LEFT JOIN users u ON dr.requested_by = u.id
         LEFT JOIN users rv ON dr.reviewed_by = rv.id
         ORDER BY CASE dr.status WHEN 'pending' THEN 0 ELSE 1 END, dr.created_at DESC
-    `).all();
+        LIMIT ? OFFSET ?
+    `).all(pageSize, offset);
 
-    const pendingCount = requests.filter(r => r.status === 'pending').length;
+    const pendingCount = db.prepare("SELECT COUNT(*) as cnt FROM delete_requests WHERE status='pending'").get().cnt;
 
     res.render('admin/delete-requests', {
         title: 'Yêu cầu Xoá Video',
-        requests,
-        pendingCount,
-        msg: req.query.msg || null
+        requests, pendingCount,
+        msg: req.query.msg || null,
+        currentPage: page, totalPages: Math.ceil(total / pageSize), total, pageSize,
     });
 });
 
@@ -559,9 +894,62 @@ router.post('/delete-requests/:id/reject', requireAdmin, (req, res) => {
 
 
 router.get('/servers', requireAdmin, (req, res) => {
-    const db = getDb();
-    const servers = db.prepare('SELECT * FROM servers ORDER BY created_at DESC').all();
+    const servers = getServerStats();
     res.render('admin/servers', { title: 'Quản lí Server', servers });
+});
+
+// GET /admin/api/servers/least-loaded - Trả về server ít video nhất
+router.get('/api/servers/least-loaded', requireUploader, (req, res) => {
+    const server = pickLeastLoadedServer();
+    if (!server) return res.json({ ok: false, message: 'Không có server nào' });
+    res.json({ ok: true, server: { id: server.id, label: server.label, ip: server.ip, video_count: server.video_count } });
+});
+
+// GET /admin/api/servers/:id/nginx-config - Generate Nginx config cho server
+router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
+    const db = getDb();
+    const s = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+    if (!s) return res.status(404).send('Server không tồn tại');
+
+    const config = `server {
+    listen 80;
+    server_name _;
+
+    root ${s.storage_path || '/var/hls-storage'};
+
+    # .png URLs → .ts segments (CF Worker sẽ sửa Content-Type)
+    location ~* ^/hls/([^/]+)/([^/]+)/(.+)\.png$ {
+        try_files /hls/$1/$2/$3.ts =404;
+        types { }
+        default_type image/png;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Access-Control-Allow-Origin "*";
+        access_log off;
+    }
+
+    # M3U8 playlists — thay .ts → .png, no-cache
+    location ~* \.m3u8$ {
+        types { }
+        default_type application/vnd.apple.mpegurl;
+        sub_filter '.ts' '.png';
+        sub_filter_once off;
+        sub_filter_types application/vnd.apple.mpegurl text/plain;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Access-Control-Allow-Origin "*";
+    }
+
+    # Health check
+    location /ping {
+        return 200 'ok';
+        add_header Content-Type text/plain;
+        access_log off;
+    }
+
+    location / { return 403; }
+}
+`;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(config);
 });
 
 router.get('/servers/add', requireAdmin, (req, res) => {
@@ -674,8 +1062,17 @@ router.post('/api/servers/:id/ping', requireAdmin, async (req, res) => {
 
 router.get('/users', requireAdmin, (req, res) => {
     const db = getDb();
-    const users = db.prepare('SELECT id, username, display_name, role, is_active, created_at FROM users ORDER BY created_at DESC').all();
-    res.render('admin/users', { title: 'Quản lí Tài khoản', users, error: null, success: null });
+    const pageSize = getPageSize();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const offset = (page - 1) * pageSize;
+    const total = db.prepare('SELECT COUNT(*) as cnt FROM users').get().cnt;
+    const users = db.prepare(
+        'SELECT id, username, display_name, role, is_active, created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    ).all(pageSize, offset);
+    res.render('admin/users', {
+        title: 'Quản lí Tài khoản', users, error: null, success: null,
+        currentPage: page, totalPages: Math.ceil(total / pageSize), total, pageSize,
+    });
 });
 
 router.get('/users/add', requireAdmin, (req, res) => {
@@ -822,12 +1219,61 @@ router.get('/api/queue', requireAuth, (req, res) => {
 router.get('/settings', requireAdmin, (req, res) => {
     const db = getDb();
     const user = db.prepare('SELECT api_token FROM users WHERE id = ?').get(req.session.user.id);
+
+    // Read SA email for display
+    let driveServiceEmail = null;
+    try {
+        const saRaw = getSetting('gdrive_service_account');
+        if (saRaw) driveServiceEmail = JSON.parse(saRaw).client_email || null;
+    } catch { /* ignore */ }
+
     res.render('admin/settings', {
         title: 'Cài đặt Hệ thống',
         apiToken: user ? user.api_token : null,
+        currentPageSize: getPageSize(),
+        driveServiceEmail,
         success: req.query.saved ? 'Đã lưu cài đặt!' : null,
         error: null,
     });
+});
+
+// POST /admin/settings/gdrive-sa — Save Service Account JSON
+router.post('/settings/gdrive-sa', requireAdmin, (req, res) => {
+    const json = (req.body.service_account_json || '').trim();
+    if (!json) return res.redirect('/admin/settings?saved=1');
+    try {
+        const parsed = JSON.parse(json);
+        if (!parsed.client_email || !parsed.private_key) {
+            return res.redirect('/admin/settings?error=sa_invalid');
+        }
+        setSetting('gdrive_service_account', JSON.stringify(parsed));
+        console.log('[GDrive] Service Account saved:', parsed.client_email);
+    } catch {
+        return res.redirect('/admin/settings?error=sa_parse');
+    }
+    res.redirect('/admin/settings?saved=1');
+});
+
+// POST /admin/settings/gdrive-sa/remove — Remove Service Account
+router.post('/settings/gdrive-sa/remove', requireAdmin, (req, res) => {
+    setSetting('gdrive_service_account', '');
+    res.redirect('/admin/settings?saved=1');
+});
+
+// GET /admin/api/gdrive/test — Test Service Account connection
+router.get('/api/gdrive/test', requireAdmin, async (req, res) => {
+    const { testServiceAccount } = require('../services/gdrive');
+    const result = await testServiceAccount();
+    res.json(result);
+});
+
+// POST /admin/settings/page-size — Save configurable page size
+router.post('/settings/page-size', requireAdmin, (req, res) => {
+    const n = parseInt(req.body.page_size);
+    if (!isNaN(n) && n >= 5 && n <= 200) {
+        setSetting('admin_page_size', String(n));
+    }
+    res.redirect('/admin/settings?saved=1');
 });
 
 router.post('/settings/r2', requireAdmin, (req, res) => {
@@ -870,6 +1316,17 @@ router.get('/api-docs', requireAdmin, (req, res) => {
     const user = db.prepare('SELECT api_token FROM users WHERE id = ?').get(req.session.user.id);
     res.render('admin/api-docs', {
         title: 'API Documentation',
+        servers,
+        apiToken: user ? (user.api_token || '') : ''
+    });
+});
+
+router.get('/guide', requireAuth, (req, res) => {
+    const db = getDb();
+    const servers = db.prepare('SELECT id, label, server_type FROM servers WHERE is_active=1').all();
+    const user = db.prepare('SELECT api_token FROM users WHERE id = ?').get(req.session.user.id);
+    res.render('admin/guide', {
+        title: 'Hướng dẫn',
         servers,
         apiToken: user ? (user.api_token || '') : ''
     });
@@ -1030,7 +1487,7 @@ module.exports = router;
 router.get('/errors', requireAdmin, (req, res) => {
     const db = getDb();
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = 50;
+    const limit = getPageSize();
     const offset = (page - 1) * limit;
     const type = req.query.type || '';
 
@@ -1038,13 +1495,18 @@ router.get('/errors', requireAdmin, (req, res) => {
     const logs = db.prepare(`SELECT * FROM error_logs ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(limit, offset);
     const total = db.prepare(`SELECT COUNT(*) as cnt FROM error_logs ${where}`).get().cnt;
 
+    // Count by type for stats bar
+    const typeRows = db.prepare('SELECT type, COUNT(*) as cnt FROM error_logs GROUP BY type').all();
+    const typeCounts = {};
+    typeRows.forEach(r => { typeCounts[r.type] = r.cnt; });
+
     res.render('admin/errors', {
         title: 'Nhật ký Lỗi',
-        logs,
-        total,
-        page,
+        logs, total, page,
         totalPages: Math.ceil(total / limit),
         filterType: type,
+        typeCounts,
+        pageSize: limit,
     });
 });
 
@@ -1245,6 +1707,41 @@ router.post('/cdn/auto-create', requireAdmin, async (req, res) => {
     // Redirect về trang CDN với danh sách jobIds để browser có thể subscribe SSE
     const ids = jobIds.map(j => j.jobId).join(',');
     res.redirect(`/admin/cdn?msg=auto_create_started&jobs=${ids}`);
+});
+// =============================
+// ENCODE WORKERS (admin only)
+// =============================
+
+// GET /admin/workers — Trang quản lý encode workers
+router.get('/workers', requireAdmin, async (req, res) => {
+    const { getAllWorkersStatus } = require('../services/workerPool');
+    const workers = await getAllWorkersStatus();
+    res.render('admin/workers', { title: 'Encode Workers', workers, msg: req.query.msg || null });
+});
+
+// POST /admin/workers/add — Thêm worker mới
+router.post('/workers/add', requireAdmin, (req, res) => {
+    const { label, url, token } = req.body;
+    if (!label || !url || !token) {
+        return res.redirect('/admin/workers?msg=missing');
+    }
+    const { getWorkers, saveWorkers } = require('../services/workerPool');
+    const workers = getWorkers();
+    workers.push({ label: label.trim(), url: url.trim(), token: token.trim() });
+    saveWorkers(workers);
+    res.redirect('/admin/workers?msg=added');
+});
+
+// POST /admin/workers/:idx/delete — Xoá worker theo index
+router.post('/workers/:idx/delete', requireAdmin, (req, res) => {
+    const { getWorkers, saveWorkers } = require('../services/workerPool');
+    const workers = getWorkers();
+    const idx = parseInt(req.params.idx);
+    if (!isNaN(idx) && idx >= 0 && idx < workers.length) {
+        workers.splice(idx, 1);
+        saveWorkers(workers);
+    }
+    res.redirect('/admin/workers?msg=deleted');
 });
 
 

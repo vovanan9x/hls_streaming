@@ -1,0 +1,730 @@
+<%- include('../partials/header') %>
+
+<style>
+  .guide-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+    overflow-x: auto;
+  }
+  .guide-tab {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    padding: 11px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    font-family: var(--font);
+  }
+  .guide-tab:hover { color: var(--text-primary); }
+  .guide-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .guide-section { display: none; }
+  .guide-section.active { display: block; }
+
+  .info-box {
+    background: rgba(139,92,246,0.08);
+    border: 1px solid rgba(139,92,246,0.25);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .warn-box {
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.25);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #f59e0b;
+    line-height: 1.7;
+  }
+  .step-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 20px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .step-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  pre.code-block {
+    background: #0d1117;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 12.5px;
+    color: #c9d1d9;
+    overflow-x: auto;
+    line-height: 1.65;
+    margin: 8px 0 16px;
+    white-space: pre;
+    position: relative;
+  }
+  pre.code-block .comment { color: #6e7681; }
+  pre.code-block .key { color: #d2a8ff; }
+  pre.code-block .string { color: #a5d6ff; }
+  .copy-code-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(139,92,246,0.2);
+    border: 1px solid rgba(139,92,246,0.3);
+    color: var(--accent);
+    border-radius: 5px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .copy-code-btn:hover { background: rgba(139,92,246,0.35); }
+
+  .method-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 9px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+  }
+  .method-get { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+  .method-post { background: rgba(139,92,246,0.15); color: #8b5cf6; border: 1px solid rgba(139,92,246,0.3); }
+
+  .endpoint {
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--accent);
+    background: rgba(139,92,246,0.08);
+    padding: 7px 12px;
+    border-radius: 7px;
+    display: inline-block;
+    margin: 4px 0 10px;
+  }
+  .param-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 12px; }
+  .param-table th { text-align: left; padding: 8px 12px; color: #8888aa; font-weight: 600; border-bottom: 1px solid var(--border); }
+  .param-table td { padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: top; }
+  .param-table td:first-child { font-family: monospace; color: var(--accent); white-space: nowrap; }
+  .req-tag { font-size: 9px; background: rgba(239,68,68,0.15); color: #ef4444; padding: 1px 6px; border-radius: 10px; font-weight: 700; margin-left: 4px; }
+  .opt-tag { font-size: 9px; background: rgba(255,255,255,0.06); color: #8888aa; padding: 1px 6px; border-radius: 10px; font-weight: 600; margin-left: 4px; }
+
+  .api-section { margin-bottom: 28px; }
+  .api-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 14px; }
+  .api-card h3 { margin: 0 0 10px; font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+
+  .arch-diagram {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 16px 0;
+  }
+  .arch-node {
+    background: rgba(139,92,246,0.1);
+    border: 1px solid rgba(139,92,246,0.3);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
+  }
+  .arch-arrow {
+    color: var(--text-muted);
+    font-size: 18px;
+  }
+  .token-display {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(139,92,246,0.08);
+    border: 1px solid rgba(139,92,246,0.2);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+  }
+  .token-display code {
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--accent);
+    word-break: break-all;
+    flex: 1;
+  }
+</style>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Tài liệu & Hướng dẫn
+    </div>
+  </div>
+
+  <div class="guide-tabs">
+    <button class="guide-tab active" onclick="switchTab('overview')">🏗️ Tổng quan</button>
+    <button class="guide-tab" onclick="switchTab('server')">🖥️ Storage Server</button>
+    <button class="guide-tab" onclick="switchTab('worker')">⚙️ Encode Workers</button>
+    <button class="guide-tab" onclick="switchTab('cdn')">☁️ CDN</button>
+    <button class="guide-tab" onclick="switchTab('api')">🔌 API Reference</button>
+  </div>
+
+  <!-- ─── TAB: OVERVIEW ─── -->
+  <div id="tab-overview" class="guide-section active">
+    <div class="info-box">
+      <strong style="color:var(--accent);">Luồng hoạt động tổng thể:</strong>
+      <div class="arch-diagram" style="margin-top:12px;">
+        <div class="arch-node">📤 Upload<br><small style="font-weight:400;color:#8888aa;">File / URL / Drive</small></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">🖥️ App Server<br><small style="font-weight:400;color:#8888aa;">Node.js / VPS</small></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">⚙️ Encode Worker<br><small style="font-weight:400;color:#8888aa;">FFmpeg / HLS</small></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">📦 Storage Server<br><small style="font-weight:400;color:#8888aa;">SFTP / R2</small></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">☁️ CDN<br><small style="font-weight:400;color:#8888aa;">Cloudflare</small></div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:16px;">
+        <div style="font-weight:700;margin-bottom:8px;color:var(--text-primary);">🖥️ App Server (VPS)</div>
+        <ul style="font-size:13px;color:#b0b0d0;line-height:1.9;padding-left:18px;">
+          <li>Node.js web app — quản lý video, user, server</li>
+          <li>Tiếp nhận upload (file local, URL, Google Drive)</li>
+          <li>Giao tiếp với encode workers qua HTTP</li>
+          <li>Quản lý queue, retry logic</li>
+          <li>Phục vụ giao diện admin và player embed</li>
+        </ul>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:16px;">
+        <div style="font-weight:700;margin-bottom:8px;color:var(--text-primary);">⚙️ Encode Worker</div>
+        <ul style="font-size:13px;color:#b0b0d0;line-height:1.9;padding-left:18px;">
+          <li>Server riêng — Node.js + FFmpeg</li>
+          <li>Nhận file từ App, encode sang HLS (360p → 1080p)</li>
+          <li>Upload HLS qua SFTP lên Storage Server</li>
+          <li>Báo callback về App khi xong</li>
+          <li>Nhiều workers = encode song song = nhanh hơn</li>
+        </ul>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:16px;">
+        <div style="font-weight:700;margin-bottom:8px;color:var(--text-primary);">📦 Storage Server (Hetzner)</div>
+        <ul style="font-size:13px;color:#b0b0d0;line-height:1.9;padding-left:18px;">
+          <li>Dedicated server / Storage Box Hetzner</li>
+          <li>Chứa toàn bộ file HLS (.m3u8, .ts)</li>
+          <li>Kết nối qua SFTP (IP:22)</li>
+          <li>Nginx phục vụ HLS cho CDN</li>
+          <li>Cloudflare R2 cũng được hỗ trợ</li>
+        </ul>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:16px;">
+        <div style="font-weight:700;margin-bottom:8px;color:var(--text-primary);">☁️ CDN (Cloudflare)</div>
+        <ul style="font-size:13px;color:#b0b0d0;line-height:1.9;padding-left:18px;">
+          <li>Cache HLS segments từ Storage Server</li>
+          <li>Giảm tải cho Storage, tăng tốc độ phát</li>
+          <li>Mỗi server có thể có nhiều CDN node</li>
+          <li>Page Rule: Cache Everything + Edge TTL</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── TAB: STORAGE SERVER ─── -->
+  <div id="tab-server" class="guide-section">
+    <div class="info-box">
+      <strong style="color:var(--accent);">Storage Server</strong> là nơi lưu trữ toàn bộ file HLS. Được kết nối qua SFTP (port 22). Worker sẽ upload HLS lên đây sau khi encode xong. Nginx trên server này phục vụ file cho CDN.
+    </div>
+
+    <div class="step-title"><span class="step-num">1</span>Cài Nginx trên Storage Server</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>apt update && apt install -y nginx
+
+# Tạo thư mục lưu video
+mkdir -p /var/www/hls-storage
+chown -R www-data:www-data /var/www/hls-storage</pre>
+
+    <div class="step-title"><span class="step-num">2</span>Cấu hình Nginx để phục vụ HLS</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Nhấn nút <strong>Copy Nginx Config</strong> trong trang <a href="/admin/servers" style="color:var(--accent);">Quản lí Server</a> để lấy config tự động theo server của bạn:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># /etc/nginx/sites-available/hls-storage</span>
+server {
+    listen 80;
+    server_name <span class="string">your-storage-domain.com</span>;
+
+    root /var/www/<span class="string">hls-storage</span>;
+    autoindex off;
+
+    location / {
+        add_header Access-Control-Allow-Origin *;
+        add_header Cache-Control "public, max-age=31536000";
+    }
+
+    location ~ \.m3u8$ {
+        add_header Access-Control-Allow-Origin *;
+        add_header Cache-Control "no-cache";
+    }
+}
+</pre>
+
+    <div class="step-title"><span class="step-num">3</span>Thêm server vào hệ thống</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Vào <a href="/admin/servers/add" style="color:var(--accent);">Thêm Server</a> và điền:</p>
+    <ul style="font-size:13px;color:#b0b0d0;line-height:2;padding-left:20px;">
+      <li><strong>Label:</strong> tên hiển thị (vd: "Hetzner AX41")</li>
+      <li><strong>IP / Host:</strong> IP của storage server</li>
+      <li><strong>Port:</strong> 22 (SFTP)</li>
+      <li><strong>Username:</strong> root hoặc user SFTP</li>
+      <li><strong>Password / SSH Key:</strong> passphrase SSH</li>
+      <li><strong>Storage Path:</strong> /var/www/hls-storage</li>
+      <li><strong>Public URL:</strong> http://your-storage-ip hoặc CDN URL</li>
+    </ul>
+
+    <div class="warn-box">
+      ⚠️ Trạng thái SFTP được kiểm tra tự động mỗi 1 phút. Nhấn nút ping để kiểm tra thủ công. Nhấn nút copy để lấy Nginx config cho từng server.
+    </div>
+  </div>
+
+  <!-- ─── TAB: ENCODE WORKERS ─── -->
+  <div id="tab-worker" class="guide-section">
+    <div class="info-box">
+      <strong style="color:var(--accent);">Encode Worker</strong> là server riêng chạy Node.js + FFmpeg. App gửi file video sang Worker qua HTTP, Worker encode sang HLS rồi tự SFTP upload lên Storage Server, sau đó báo callback về App. Nếu không có worker hoặc worker bận, App sẽ tự encode local (chậm hơn, tốn CPU/RAM VPS).
+    </div>
+
+    <!-- Architecture diagram -->
+    <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;">
+      <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:var(--text-primary);">📡 Luồng hoạt động khi có Worker</div>
+      <div class="arch-diagram">
+        <div class="arch-node">📤 Upload<br><small style="font-weight:400;color:#8888aa;">File / URL / Drive</small></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">🖥️ App Server<br><small style="font-weight:400;color:#8888aa;">Nhận file, tìm worker rảnh</small></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node" style="border-color:rgba(34,197,94,0.5);background:rgba(34,197,94,0.08);">⚙️ Encode Worker<br><small style="font-weight:400;color:#22c55e;">Encode HLS + SFTP upload</small></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">📦 Storage Server<br><small style="font-weight:400;color:#8888aa;">Lưu HLS files</small></div>
+      </div>
+      <div style="font-size:12px;color:#8888aa;margin-top:8px;">
+        ↩️ Worker báo callback về App khi xong → App cập nhật DB → Video sẵn sàng phát
+      </div>
+    </div>
+
+    <!-- Prerequisites -->
+    <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:16px;margin-bottom:20px;">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#f59e0b;">📋 Yêu cầu trước khi bắt đầu</div>
+      <ul style="font-size:13px;color:#b0b0d0;line-height:2;padding-left:20px;margin:0;">
+        <li>Server Ubuntu 22.04+ (VD: Hetzner AX41-NVME, VPS Contabo, DigitalOcean...)</li>
+        <li>Quyền root (SSH)</li>
+        <li>App Server đang chạy và có IP public / domain</li>
+        <li>Storage Server đã cấu hình SFTP (Worker sẽ tự SFTP lên storage)</li>
+        <li><strong>Port 4000</strong> mở cho App Server kết nối</li>
+      </ul>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="step-title"><span class="step-num">1</span>Cài môi trường trên Encode Server</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">SSH vào server encode và cài Node.js 20 + FFmpeg:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Cập nhật hệ thống</span>
+apt update && apt upgrade -y
+
+<span class="comment"># Cài Node.js 20 LTS</span>
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs
+
+<span class="comment"># Cài FFmpeg</span>
+apt install -y ffmpeg
+
+<span class="comment"># Kiểm tra</span>
+node -v       <span class="comment"># → v20.x.x</span>
+ffmpeg -version  <span class="comment"># → ffmpeg version 5.x+</span></pre>
+
+    <!-- Step 2 -->
+    <div class="step-title"><span class="step-num">2</span>Upload code Worker lên server</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Từ máy local (Windows), copy thư mục <code>worker/</code> lên server:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Từ Terminal / PowerShell trên máy local</span>
+scp -r d:/nodejs/worker root@<span class="string">&lt;WORKER_IP&gt;</span>:/opt/hls-worker</pre>
+    <div style="font-size:12px;color:#8888aa;margin-bottom:16px;padding:0 4px;">
+      📁 Thư mục <code>worker/</code> chứa: <code>server.js</code>, <code>package.json</code> — đây là toàn bộ code cần thiết cho worker.
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step-title"><span class="step-num">3</span>Cài dependencies</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># SSH vào server worker</span>
+ssh root@<span class="string">&lt;WORKER_IP&gt;</span>
+
+cd /opt/hls-worker
+npm install</pre>
+    <p style="font-size:12px;color:#8888aa;margin-bottom:16px;padding:0 4px;">
+      📦 Packages cần thiết: <code>express</code>, <code>axios</code>, <code>fluent-ffmpeg</code>, <code>multer</code>, <code>ssh2-sftp-client</code>, <code>dotenv</code>
+    </p>
+
+    <!-- Step 4 -->
+    <div class="step-title"><span class="step-num">4</span>Tạo file cấu hình .env</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Tạo file <code>.env</code> trong thư mục <code>/opt/hls-worker/</code>:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>cat > /opt/hls-worker/.env << 'EOF'
+<span class="key">WORKER_PORT</span>=<span class="string">4000</span>
+<span class="key">WORKER_TOKEN</span>=<span class="string">&lt;token-bí-mật&gt;</span>
+<span class="key">APP_URL</span>=<span class="string">http://&lt;APP_SERVER_IP&gt;:3000</span>
+<span class="key">WORKER_TMP_DIR</span>=<span class="string">/tmp/worker_uploads</span>
+EOF</pre>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;">
+        <div style="font-weight:700;color:var(--text-primary);margin-bottom:6px;">📌 Giải thích từng biến</div>
+        <div style="color:#b0b0d0;line-height:1.8;">
+          <strong style="color:var(--accent);">WORKER_PORT</strong> — Port HTTP worker lắng nghe (mặc định 4000)<br>
+          <strong style="color:var(--accent);">WORKER_TOKEN</strong> — Token xác thực, phải <strong>giống nhau</strong> ở worker và app<br>
+          <strong style="color:var(--accent);">APP_URL</strong> — URL của App Server để worker gửi callback<br>
+          <strong style="color:var(--accent);">WORKER_TMP_DIR</strong> — Thư mục tạm lưu file nhận từ app
+        </div>
+      </div>
+      <div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.2);border-radius:8px;padding:12px;font-size:12.5px;">
+        <div style="font-weight:700;color:var(--accent);margin-bottom:6px;">🔑 Tạo token ngẫu nhiên</div>
+        <pre class="code-block" style="margin:0;font-size:12px;"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</pre>
+        <div style="color:#b0b0d0;margin-top:8px;line-height:1.6;">Copy chuỗi hex này làm <code>WORKER_TOKEN</code>. Phải giống nhau ở cả worker và khi thêm worker trên App.</div>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step-title"><span class="step-num">5</span>Chạy Worker bằng PM2 (auto-restart)</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Cài PM2 — process manager cho Node.js</span>
+npm install -g pm2
+
+<span class="comment"># Chạy worker</span>
+cd /opt/hls-worker
+pm2 start server.js --name hls-worker
+
+<span class="comment"># Lưu cấu hình PM2 + tự khởi động khi reboot</span>
+pm2 save && pm2 startup
+
+<span class="comment"># Kiểm tra trạng thái</span>
+pm2 status
+pm2 logs hls-worker --lines 20</pre>
+
+    <div class="info-box" style="margin-top:8px;">
+      Nếu thấy <code>🔧 HLS Encode Worker đang chạy: http://0.0.0.0:4000</code> trong logs → Worker đã sẵn sàng! ✅
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step-title"><span class="step-num">6</span>Cấu hình Firewall (bảo mật)</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Chỉ cho phép App Server kết nối port 4000:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Chỉ cho App Server kết nối port 4000</span>
+ufw allow from <span class="string">&lt;APP_SERVER_IP&gt;</span> to any port 4000
+
+<span class="comment"># Giữ SSH</span>
+ufw allow 22
+
+<span class="comment"># Bật firewall</span>
+ufw enable
+ufw status</pre>
+
+    <div class="warn-box">
+      ⚠️ <strong>Quan trọng:</strong> Không mở port 4000 cho toàn bộ internet! Chỉ cho phép IP của App Server kết nối để tránh bị lợi dụng.
+    </div>
+
+    <!-- Step 7 -->
+    <div class="step-title"><span class="step-num">7</span>Đăng ký Worker trên App Server</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:12px;">Vào <a href="/admin/workers" style="color:var(--accent);">Quản lí Encode Workers</a> → thêm worker:</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:11px;color:#8888aa;text-transform:uppercase;margin-bottom:6px;">Label</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text-primary);">Worker-01 (AX41)</div>
+        <div style="font-size:11px;color:#8888aa;margin-top:4px;">Tên gợi nhớ tuỳ ý</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:11px;color:#8888aa;text-transform:uppercase;margin-bottom:6px;">URL Worker</div>
+        <div style="font-size:13px;font-weight:600;color:var(--accent);font-family:monospace;">http://IP:4000</div>
+        <div style="font-size:11px;color:#8888aa;margin-top:4px;">IP + Port của worker</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:11px;color:#8888aa;text-transform:uppercase;margin-bottom:6px;">Secret Token</div>
+        <div style="font-size:13px;font-weight:600;color:#f59e0b;">••••••••</div>
+        <div style="font-size:11px;color:#8888aa;margin-top:4px;">Khớp WORKER_TOKEN trong .env</div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      Sau khi thêm, nhấn vào worker trong danh sách để kiểm tra kết nối. Nếu hiện <strong style="color:#22c55e;">Online</strong> → sẵn sàng nhận việc!
+    </div>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid var(--border);margin:28px 0;"></div>
+
+    <!-- Update section -->
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">🔄 Cập nhật code Worker</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Khi code <code>worker/server.js</code> thay đổi (thêm endpoint, fix bug...), cần update lên server worker:</p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Bước 1: Upload file mới từ máy local</span>
+scp -r d:/nodejs/worker/* root@<span class="string">&lt;WORKER_IP&gt;</span>:/opt/hls-worker/
+
+<span class="comment"># Bước 2: SSH vào worker, cài package mới (nếu có) và restart</span>
+ssh root@<span class="string">&lt;WORKER_IP&gt;</span>
+cd /opt/hls-worker
+npm install
+pm2 restart hls-worker
+
+<span class="comment"># Bước 3: Kiểm tra logs</span>
+pm2 logs hls-worker --lines 20</pre>
+
+    <div class="warn-box">
+      ⚠️ <strong>Lưu ý:</strong> luôn restart worker sau khi update code! Nếu không restart, worker vẫn chạy code cũ → có thể gặp lỗi 404 khi App gọi endpoint mới.
+    </div>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid var(--border);margin:28px 0;"></div>
+
+    <!-- Troubleshooting -->
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">🔍 Xử lý sự cố</div>
+
+    <div style="display:grid;gap:12px;">
+      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:#ef4444;margin-bottom:6px;">❌ Worker hiện Offline trên App</div>
+        <ul style="font-size:12.5px;color:#b0b0d0;line-height:1.9;padding-left:18px;margin:0;">
+          <li>Kiểm tra worker đang chạy: <code>pm2 status</code></li>
+          <li>Kiểm tra port mở: <code>curl http://&lt;WORKER_IP&gt;:4000/status -H "x-worker-token: &lt;token&gt;"</code></li>
+          <li>Kiểm tra firewall: <code>ufw status</code> — port 4000 phải allow cho App IP</li>
+          <li>Kiểm tra token khớp giữa worker <code>.env</code> và App</li>
+        </ul>
+      </div>
+
+      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:#ef4444;margin-bottom:6px;">❌ Worker Online nhưng không nhận việc (fallback local)</div>
+        <ul style="font-size:12.5px;color:#b0b0d0;line-height:1.9;padding-left:18px;margin:0;">
+          <li>Xem log App Server — nếu thấy <code>Request failed with status code 404</code> → worker chạy <strong>code cũ</strong>, cần update & restart</li>
+          <li>Nếu thấy <code>Worker đang bận</code> → worker đang encode video khác, App đợi hoặc fallback</li>
+          <li>Nếu thấy <code>timeout</code> → worker phản hồi chậm, kiểm tra kết nối mạng</li>
+        </ul>
+      </div>
+
+      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:#ef4444;margin-bottom:6px;">❌ Worker encode xong nhưng video vẫn ở trạng thái "processing"</div>
+        <ul style="font-size:12.5px;color:#b0b0d0;line-height:1.9;padding-left:18px;margin:0;">
+          <li>Worker callback về App thất bại — kiểm tra <code>APP_URL</code> trong <code>.env</code> đúng chưa</li>
+          <li>App Server phải mở port 3000 cho Worker IP kết nối</li>
+          <li>Xem log worker: <code>pm2 logs hls-worker</code> — tìm dòng "Không thể báo done"</li>
+        </ul>
+      </div>
+
+      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:#ef4444;margin-bottom:6px;">❌ Worker SFTP upload lên Storage Server thất bại</div>
+        <ul style="font-size:12.5px;color:#b0b0d0;line-height:1.9;padding-left:18px;margin:0;">
+          <li>Worker cần kết nối SFTP tới Storage Server — kiểm tra Storage Server cho phép kết nối từ Worker IP</li>
+          <li>Password Storage Server phải đúng trong App (Worker nhận cấu hình SFTP từ App)</li>
+          <li>Kiểm tra dung lượng Storage Server: <code>df -h</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid var(--border);margin:28px 0;"></div>
+
+    <!-- PM2 commands reference -->
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">📘 PM2 — Lệnh thường dùng</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>pm2 status                          <span class="comment"># Xem trạng thái tất cả processes</span>
+pm2 logs hls-worker                 <span class="comment"># Xem logs realtime</span>
+pm2 logs hls-worker --lines 50      <span class="comment"># Xem 50 dòng logs gần nhất</span>
+pm2 restart hls-worker              <span class="comment"># Restart worker</span>
+pm2 stop hls-worker                 <span class="comment"># Dừng worker</span>
+pm2 delete hls-worker               <span class="comment"># Xoá khỏi PM2</span>
+pm2 monit                           <span class="comment"># Monitor CPU/RAM realtime</span></pre>
+  </div>
+
+  <!-- ─── TAB: CDN ─── -->
+  <div id="tab-cdn" class="guide-section">
+    <div class="info-box">
+      <strong style="color:var(--accent);">CDN Cloudflare</strong> cache HLS segments từ Storage Server, giảm tải bandwidth và tăng tốc độ phát cho người dùng cuối. Mỗi Storage Server có thể có nhiều CDN URL (subdomain khác nhau).
+    </div>
+
+    <div class="step-title"><span class="step-num">1</span>Thêm domain vào Cloudflare</div>
+    <ul style="font-size:13px;color:#b0b0d0;line-height:2;padding-left:20px;">
+      <li>Đăng nhập Cloudflare → Add Site → nhập domain</li>
+      <li>Đổi nameserver về Cloudflare</li>
+      <li>Tạo A record trỏ về IP của Storage Server</li>
+      <li>Bật Proxy (biểu tượng đám mây cam)</li>
+    </ul>
+
+    <div class="step-title"><span class="step-num">2</span>Cấu hình Page Rules / Cache Rules</div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Page Rule (Classic) hoặc Cache Rule</span>
+URL Pattern: cdn.yourdomain.com/*
+
+Cache Level: Cache Everything
+Edge Cache TTL: 1 month  <span class="comment"># cho .ts segments</span>
+
+<span class="comment"># Cho .m3u8 (playlist) — cần ngắn hơn</span>
+URL Pattern: cdn.yourdomain.com/*.m3u8
+Edge Cache TTL: 2 minutes</pre>
+
+    <div class="step-title"><span class="step-num">3</span>Thêm CDN vào Storage Server</div>
+    <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Vào <a href="/admin/cdn-accounts" style="color:var(--accent);">CDN Pool</a> → Thêm CDN URL gắn với Storage Server tương ứng.</p>
+    <ul style="font-size:13px;color:#b0b0d0;line-height:2;padding-left:20px;">
+      <li><strong>CDN URL:</strong> <code>https://cdn.yourdomain.com</code></li>
+      <li><strong>Server:</strong> chọn Storage Server tương ứng</li>
+      <li><strong>Label:</strong> tên gợi nhớ</li>
+    </ul>
+
+    <div class="warn-box">
+      ⚠️ HLS link trong database sẽ tự động được thay bằng CDN URL khi phát. Đảm bảo CDN URL không có trailing slash.
+    </div>
+  </div>
+
+  <!-- ─── TAB: API REFERENCE ─── -->
+  <div id="tab-api" class="guide-section">
+    <!-- Auth -->
+    <div class="api-section">
+      <div class="card" style="padding:20px;">
+        <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:var(--text-primary);">🔑 Xác thực API</div>
+        <p style="font-size:13px;color:#b0b0d0;margin-bottom:12px;">Tất cả API yêu cầu <strong>API Token</strong>. Tạo token trong <a href="/admin/settings" style="color:var(--accent);">Cài đặt</a>.</p>
+        <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment">// Cách 1: Header</span>
+Authorization: Bearer <span class="string">YOUR_API_TOKEN</span>
+
+<span class="comment">// Cách 2: Query param</span>
+GET /api/v1/videos?<span class="key">token</span>=<span class="string">YOUR_API_TOKEN</span></pre>
+        <% if (apiToken) { %>
+        <div class="token-display">
+          <code id="guide-api-token"><%= apiToken %></code>
+          <button class="btn btn-primary btn-sm" onclick="copyApiToken()">Copy Token</button>
+        </div>
+        <% } else { %>
+        <div class="warn-box">⚠️ Bạn chưa có API Token. <a href="/admin/settings" style="color:#f59e0b;font-weight:600;">Tạo ngay →</a></div>
+        <% } %>
+        <div style="font-size:12px;color:#8888aa;margin-top:4px;">Base URL: <code id="guide-base-url" style="color:var(--accent);"></code></div>
+      </div>
+    </div>
+
+    <!-- Endpoints -->
+    <div class="api-section">
+      <div class="api-card">
+        <h3><span class="method-badge method-get">GET</span> Danh sách video</h3>
+        <div class="endpoint">/api/v1/videos</div>
+        <table class="param-table">
+          <thead><tr><th>Tham số</th><th>Kiểu</th><th>Mô tả</th></tr></thead>
+          <tbody>
+            <tr><td>page <span class="opt-tag">tuỳ chọn</span></td><td>number</td><td>Trang (mặc định: 1)</td></tr>
+            <tr><td>limit <span class="opt-tag">tuỳ chọn</span></td><td>number</td><td>Số video/trang (mặc định: 20, tối đa: 100)</td></tr>
+          </tbody>
+        </table>
+        <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>curl -H "<span class="key">Authorization</span>: Bearer YOUR_TOKEN" \
+  <span class="string">http://localhost:3000/api/v1/videos?page=1&limit=10</span></pre>
+      </div>
+
+      <div class="api-card">
+        <h3><span class="method-badge method-get">GET</span> Chi tiết video</h3>
+        <div class="endpoint">/api/v1/videos/:id</div>
+        <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Trả về thông tin chi tiết 1 video kèm <code>m3u8_url</code>, <code>iframe_url</code>, <code>qualities</code>.</p>
+        <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>curl -H "<span class="key">Authorization</span>: Bearer YOUR_TOKEN" \
+  <span class="string">http://localhost:3000/api/v1/videos/1</span></pre>
+      </div>
+
+      <div class="api-card">
+        <h3><span class="method-badge method-get">GET</span> Stream video</h3>
+        <div class="endpoint">/api/v1/videos/:id/stream</div>
+        <p style="font-size:13px;color:#b0b0d0;">Redirect 302 tới m3u8 URL. Dùng trực tiếp trong HLS player.</p>
+      </div>
+
+      <div class="api-card">
+        <h3><span class="method-badge method-post">POST</span> Upload từ URL</h3>
+        <div class="endpoint">/api/v1/upload/url</div>
+        <table class="param-table">
+          <thead><tr><th>Tham số (JSON body)</th><th>Kiểu</th><th>Mô tả</th></tr></thead>
+          <tbody>
+            <tr><td>url <span class="req-tag">bắt buộc</span></td><td>string</td><td>Link trực tiếp tới file (MP4, MKV, AVI...)</td></tr>
+            <tr><td>title <span class="req-tag">bắt buộc</span></td><td>string</td><td>Tiêu đề video</td></tr>
+            <tr><td>server_id <span class="req-tag">bắt buộc</span></td><td>number</td><td>ID storage server</td></tr>
+            <tr><td>qualities <span class="opt-tag">tuỳ chọn</span></td><td>array</td><td>["360p","720p","1080p"] — mặc định ["720p"]</td></tr>
+            <tr><td>description <span class="opt-tag">tuỳ chọn</span></td><td>string</td><td>Mô tả video</td></tr>
+          </tbody>
+        </table>
+        <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>curl -X POST <span class="string">http://localhost:3000/api/v1/upload/url</span> \
+  -H "<span class="key">Authorization</span>: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"<span class="key">url</span>":"<span class="string">https://example.com/video.mp4</span>","<span class="key">title</span>":"<span class="string">Video Test</span>","<span class="key">server_id</span>":1}'</pre>
+      </div>
+
+      <div class="api-card">
+        <h3><span class="method-badge method-post">POST</span> Upload từ Google Drive</h3>
+        <div class="endpoint">/api/v1/upload/drive</div>
+        <div class="warn-box" style="margin-bottom:10px;">⚠️ File Drive phải public (Anyone with the link). File >100MB được auto bypass virus scan.</div>
+        <table class="param-table">
+          <thead><tr><th>Tham số (JSON body)</th><th>Kiểu</th><th>Mô tả</th></tr></thead>
+          <tbody>
+            <tr><td>drive_url <span class="req-tag">bắt buộc</span></td><td>string</td><td>Link Drive (/file/d/ID/view hoặc ?id=ID)</td></tr>
+            <tr><td>title <span class="req-tag">bắt buộc</span></td><td>string</td><td>Tiêu đề video</td></tr>
+            <tr><td>server_id <span class="req-tag">bắt buộc</span></td><td>number</td><td>ID storage server</td></tr>
+            <tr><td>qualities <span class="opt-tag">tuỳ chọn</span></td><td>array</td><td>["360p","720p","1080p"]</td></tr>
+          </tbody>
+        </table>
+        <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button>curl -X POST <span class="string">http://localhost:3000/api/v1/upload/drive</span> \
+  -H "<span class="key">Authorization</span>: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"<span class="key">drive_url</span>":"<span class="string">https://drive.google.com/file/d/1ABC/view</span>","<span class="key">title</span>":"<span class="string">Video</span>","<span class="key">server_id</span>":1}'</pre>
+      </div>
+
+      <div class="api-card">
+        <h3><span class="method-badge method-get">GET</span> Trạng thái upload</h3>
+        <div class="endpoint">/api/v1/upload/:id/status</div>
+        <p style="font-size:13px;color:#b0b0d0;margin-bottom:8px;">Poll API này để theo dõi tiến trình encode sau khi upload.</p>
+        <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment">// Đang xử lý</span>
+{ "<span class="key">id</span>": 15, "<span class="key">status</span>": "processing", "<span class="key">progress</span>": 45, "<span class="key">m3u8_url</span>": null }
+
+<span class="comment">// Hoàn thành</span>
+{ "<span class="key">id</span>": 15, "<span class="key">status</span>": "ready", "<span class="key">progress</span>": 100, "<span class="key">m3u8_url</span>": "<span class="string">http://...</span>" }</pre>
+        <p style="font-size:12px;color:#8888aa;margin-top:8px;">
+          Trạng thái: <code style="color:#f59e0b">queued</code> → <code style="color:#8b5cf6">processing</code> → <code style="color:#3b82f6">uploading</code> → <code style="color:#22c55e">ready</code> | <code style="color:#ef4444">error</code>
+        </p>
+      </div>
+
+      <!-- Server IDs -->
+      <% if (servers && servers.length > 0) { %>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:var(--text-primary);">🖥️ Danh sách server_id</div>
+        <table class="param-table">
+          <thead><tr><th>server_id</th><th>Label</th><th>Loại</th></tr></thead>
+          <tbody>
+            <% servers.forEach(function(s) { %>
+            <tr>
+              <td><strong><%= s.id %></strong></td>
+              <td><%= s.label %></td>
+              <td><%= s.server_type === 'r2' ? '☁️ Cloudflare R2' : '🖥️ SFTP' %></td>
+            </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<script>
+  function switchTab(id) {
+    document.querySelectorAll('.guide-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.guide-section').forEach(function(s) { s.classList.remove('active'); });
+    document.getElementById('tab-' + id).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+  function copyCode(btn) {
+    var pre = btn.parentElement;
+    var text = pre.textContent.replace('Copy','').trim();
+    navigator.clipboard.writeText(text).then(function() {
+      btn.textContent = '✓ Copied';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+    });
+  }
+  function copyApiToken() {
+    var t = document.getElementById('guide-api-token');
+    if (t) navigator.clipboard.writeText(t.textContent).then(function() { showToast('success', 'API Token đã copy!'); });
+  }
+  var baseEl = document.getElementById('guide-base-url');
+  if (baseEl) baseEl.textContent = window.location.origin + '/api/v1';
+</script>
+
+<%- include('../partials/footer') %>

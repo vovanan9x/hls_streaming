@@ -1,249 +1,256 @@
 <%- include('../partials/header') %>
 
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title">Danh sách Server (<%= servers.length %>)</span>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <button id="ping-all-btn" class="btn btn-ghost btn-sm" onclick="pingAll()"
-                    title="Kiểm tra tất cả server">
-                    🔄 Ping All
-                </button>
-                <a href="/admin/servers/add" class="btn btn-primary">➕ Thêm Server</a>
-            </div>
-        </div>
-
-        <% if (servers.length===0) { %>
-            <div class="empty-state">
-                <div class="empty-state-icon">🖥️</div>
-                <div class="empty-state-text">Chưa có server nào</div>
-                <div class="empty-state-hint">Thêm server SFTP hoặc Cloudflare R2 để có thể upload video</div>
-            </div>
-            <% } else { %>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Label</th>
-                                <th>Loại</th>
-                                <th>Kết nối</th>
-                                <th>Storage / Bucket</th>
-                                <th>Trạng thái</th>
-                                <th>Kiểm tra lần cuối</th>
-                                <th>Hành động</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <% servers.forEach(function(s) { %>
-                                <tr data-server-id="<%= s.id %>">
-                                    <td style="font-weight:500">
-                                        <%= s.label %>
-                                    </td>
-                                    <td>
-                                        <% if (s.server_type==='r2' ) { %>
-                                            <span class="badge"
-                                                style="background:rgba(249,115,22,0.15);color:#f97316;border:1px solid rgba(249,115,22,0.3);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">☁️
-                                                R2</span>
-                                            <% } else { %>
-                                                <span class="badge"
-                                                    style="background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.3);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🖥️
-                                                    SFTP</span>
-                                                <% } %>
-                                    </td>
-                                    <td style="font-family:monospace;font-size:13px;color:var(--text-secondary)">
-                                        <% if (s.server_type==='r2' ) { %>
-                                            <span style="color:var(--text-muted)">Account: </span>
-                                            <%= s.r2_account_id ? s.r2_account_id.substring(0,12) + '...' : '—' %>
-                                                <% } else { %>
-                                                    <%= s.ip %>:<%= s.port %> <span
-                                                                style="color:var(--text-muted);font-size:11px">(<%=
-                                                                    s.username %>)</span>
-                                                            <% } %>
-                                    </td>
-                                    <td style="font-family:monospace;font-size:12px;color:var(--text-muted)">
-                                        <% if (s.server_type==='r2' ) { %>
-                                            <%= s.r2_bucket || '—' %>
-                                                <% } else { %>
-                                                    <%= s.storage_path %>
-                                                        <% } %>
-                                    </td>
-                                    <td>
-                                        <% if (s.server_type==='r2' ) { %>
-                                            <span class="status-badge" id="status-<%= s.id %>" data-status="r2"
-                                                style="background:rgba(52,211,153,0.1);color:#34d399;border:1px solid rgba(52,211,153,0.3);padding:3px 10px;border-radius:20px;font-size:11px;display:inline-block;">CDN</span>
-                                            <% } else if (s.status==='live' ) { %>
-                                                <span class="badge badge-live status-badge" id="status-<%= s.id %>"
-                                                    data-status="live">LIVE</span>
-                                                <% } else if (s.status==='die' ) { %>
-                                                    <span class="badge badge-die status-badge" id="status-<%= s.id %>"
-                                                        data-status="die">DIE</span>
-                                                    <% } else { %>
-                                                        <span class="badge badge-unknown status-badge"
-                                                            id="status-<%= s.id %>" data-status="unknown">UNKNOWN</span>
-                                                        <% } %>
-                                    </td>
-                                    <td class="last-checked" id="checked-<%= s.id %>"
-                                        style="color:var(--text-muted);font-size:13px;white-space:nowrap">
-                                        <% if (s.server_type==='r2' ) { %>—<% } else { %>
-                                                <%= s.last_checked || 'Chưa kiểm tra' %>
-                                                    <% } %>
-                                    </td>
-                                    <td>
-                                        <div class="btn-group">
-                                            <button class="btn btn-ghost btn-sm ping-btn" data-id="<%= s.id %>"
-                                                data-type="<%= s.server_type %>" title="Kiểm tra kết nối"
-                                                onclick="pingServer(<%= s.id %>, this)">🔍</button>
-                                            <a href="/admin/servers/<%= s.id %>/edit" class="btn btn-ghost btn-sm"
-                                                title="Sửa">✏️</a>
-                                            <form action="/admin/servers/<%= s.id %>/delete" method="POST"
-                                                class="delete-form" data-name="<%= s.label %>" style="margin:0;">
-                                                <button type="submit" class="btn btn-danger btn-sm"
-                                                    title="Xoá">🗑️</button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <% }) %>
-                        </tbody>
-                    </table>
-                </div>
-                <% } %>
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+      </svg>
+      Danh sách Server <span style="color:var(--text-muted);font-weight:400;font-size:13px;">(<%= servers.length %>)</span>
     </div>
+    <div class="btn-group">
+      <button id="ping-all-btn" class="btn btn-ghost btn-sm" onclick="pingAll()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
+          <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+        Ping All
+      </button>
+      <a href="/admin/servers/add" class="btn btn-primary btn-sm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Thêm Server
+      </a>
+    </div>
+  </div>
 
-    <!-- Toast notification -->
-    <div id="ping-toast" style="
-    position:fixed;bottom:28px;right:28px;z-index:9999;
-    background:var(--bg-card);border:1px solid var(--border-color);
-    border-radius:12px;padding:14px 20px;min-width:280px;max-width:380px;
-    box-shadow:0 8px 32px rgba(0,0,0,0.4);
-    display:none;align-items:center;gap:12px;
-    animation:slideInToast 0.25s ease;
-"></div>
+  <% if (servers.length === 0) { %>
+    <div class="empty-state">
+      <div class="empty-state-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+        </svg>
+      </div>
+      <div class="empty-state-text">Chưa có server nào</div>
+      <div class="empty-state-hint">Thêm server SFTP hoặc Cloudflare R2 để có thể upload video</div>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>Kết nối</th>
+            <th>Storage Path</th>
+            <th>Trạng thái</th>
+            <th>Kiểm tra lần cuối</th>
+            <th>Hành động</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% servers.forEach(function(s) { %>
+          <tr data-server-id="<%= s.id %>">
+            <td>
+              <div style="font-weight:600;"><%= s.label %></div>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap;">
+                <span style="color:var(--accent);">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;vertical-align:middle;"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                  <%= s.video_count || 0 %> video
+                </span>
+                <span style="color:var(--success);">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  <%= s.cdn_count || 0 %> CDN
+                </span>
+                <% if (s.total_bytes > 0) { %>
+                <span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;vertical-align:middle;"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                  <%= (s.total_bytes/1024/1024/1024).toFixed(1) %> GB
+                </span>
+                <% } %>
+              </div>
+            </td>
+            <td style="font-family:monospace;font-size:12.5px;color:var(--text-secondary);">
+              <%= s.ip %>:<%= s.port %>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;"><%= s.username %></div>
+            </td>
+            <td style="font-family:monospace;font-size:12px;color:var(--text-muted);"><%= s.storage_path %></td>
+            <td>
+              <% if (s.status === 'live') { %>
+                <span class="badge badge-live status-badge" id="status-<%= s.id %>" data-status="live"><span class="badge-dot"></span>Live</span>
+              <% } else if (s.status === 'die') { %>
+                <span class="badge badge-die status-badge" id="status-<%= s.id %>" data-status="die"><span class="badge-dot"></span>Offline</span>
+              <% } else { %>
+                <span class="badge badge-unknown status-badge" id="status-<%= s.id %>" data-status="unknown"><span class="badge-dot"></span>Unknown</span>
+              <% } %>
+            </td>
+            <td class="last-checked" id="checked-<%= s.id %>" style="color:var(--text-muted);font-size:12px;white-space:nowrap;">
+              <%= s.last_checked || 'Chưa kiểm tra' %>
+            </td>
+            <td>
+              <div class="btn-group">
+                <button class="btn btn-ghost btn-sm btn-icon ping-btn" data-id="<%= s.id %>"
+                  title="Kiểm tra kết nối" onclick="pingServer(<%= s.id %>, this)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-sm btn-icon" title="Nginx Config"
+                  onclick="showNginxConfig(<%= s.id %>, '<%= s.label %>')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <a href="/admin/servers/<%= s.id %>/edit" class="btn btn-ghost btn-sm btn-icon" title="Sửa">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </a>
+                <form action="/admin/servers/<%= s.id %>/delete" method="POST" class="delete-form" data-name="<%= s.label %>" style="margin:0;">
+                  <button type="submit" class="btn btn-ghost btn-sm btn-icon" title="Xoá" style="color:var(--danger);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
 
-    <p style="color:var(--text-muted);font-size:12px;margin-top:12px;">
-        ⏱️ Trạng thái SFTP được kiểm tra tự động mỗi 1 phút. Nhấn 🔍 để kiểm tra thủ công ngay lập tức.
-    </p>
+<p style="color:var(--text-muted);font-size:12px;margin-top:-8px;margin-bottom:16px;padding:0 2px;">
+  Trạng thái SFTP được kiểm tra tự động mỗi 1 phút. Nhấn
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;vertical-align:middle;"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+  để kiểm tra thủ công,
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;vertical-align:middle;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+  để xem nginx config.
+</p>
 
-    <style>
-        @keyframes slideInToast {
-            from {
-                opacity: 0;
-                transform: translateY(16px);
-            }
+<!-- Nginx Modal -->
+<div class="modal-backdrop" id="nginx-modal">
+  <div class="modal" style="max-width:760px;width:90%;max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-header" style="flex-shrink:0;">
+      <div class="modal-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Nginx Config — <span id="nginx-server-label"></span>
+      </div>
+      <button class="modal-close" onclick="document.getElementById('nginx-modal').classList.remove('open')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <pre id="nginx-config-text" style="flex:1;overflow:auto;max-height:50vh;">Loading...</pre>
+    <div class="modal-footer" style="flex-shrink:0;">
+      <button onclick="copyNginxConfig()" class="btn btn-primary btn-sm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy
+      </button>
+      <button onclick="document.getElementById('nginx-modal').classList.remove('open')" class="btn btn-ghost btn-sm">Đóng</button>
+    </div>
+  </div>
+</div>
 
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+<style>
+  .ping-btn.loading { pointer-events:none; opacity:.5; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<script>
+  // Delete confirm
+  document.querySelectorAll('.delete-form').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (!confirm('Bạn có chắc muốn xoá server: ' + this.dataset.name + '?')) e.preventDefault();
+    });
+  });
+
+  function updateStatusBadge(id, status) {
+    var badge = document.getElementById('status-' + id);
+    if (!badge) return;
+    badge.className = 'badge status-badge';
+    if (status === 'live') {
+      badge.classList.add('badge-live');
+      badge.innerHTML = '<span class="badge-dot"></span>Live';
+    } else if (status === 'die') {
+      badge.classList.add('badge-die');
+      badge.innerHTML = '<span class="badge-dot"></span>Offline';
+    } else if (status === 'r2') {
+      badge.classList.add('badge-ready');
+      badge.innerHTML = '<span class="badge-dot"></span>CDN';
+    } else {
+      badge.classList.add('badge-unknown');
+      badge.innerHTML = '<span class="badge-dot"></span>Unknown';
+    }
+  }
+
+  function pingServer(id, btn) {
+    if (btn) {
+      btn.classList.add('loading');
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;animation:spin 1s linear infinite;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
+    }
+    fetch('/admin/api/servers/' + id + '/ping', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (btn) { btn.classList.remove('loading'); btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>'; }
+        updateStatusBadge(id, data.status);
+        var checked = document.getElementById('checked-' + id);
+        if (checked && data.last_checked) checked.textContent = data.last_checked;
+        showToast(data.ok ? 'success' : 'error', data.message);
+      })
+      .catch(function (e) {
+        if (btn) { btn.classList.remove('loading'); btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>'; }
+        showToast('error', 'Lỗi kết nối: ' + e.message);
+      });
+  }
+
+  function pingAll() {
+    var allBtn = document.getElementById('ping-all-btn');
+    var btns = document.querySelectorAll('.ping-btn');
+    if (allBtn) { allBtn.disabled = true; allBtn.textContent = '⏳ Đang ping...'; }
+    var ids = Array.from(btns).map(function (b) { return parseInt(b.dataset.id); });
+    var pending = ids.length;
+    if (!pending) return;
+    ids.forEach(function (id) {
+      var btn = document.querySelector('.ping-btn[data-id="' + id + '"]');
+      pingServerSilent(id, btn, function () {
+        pending--;
+        if (pending === 0 && allBtn) {
+          allBtn.disabled = false; allBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Ping All';
+          showToast('success', 'Đã kiểm tra toàn bộ ' + ids.length + ' server!');
         }
+      });
+    });
+  }
 
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
+  function pingServerSilent(id, btn, done) {
+    if (btn) { btn.classList.add('loading'); btn.innerHTML = ''; }
+    fetch('/admin/api/servers/' + id + '/ping', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (btn) { btn.classList.remove('loading'); btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>'; }
+        updateStatusBadge(id, data.status);
+        var checked = document.getElementById('checked-' + id);
+        if (checked && data.last_checked) checked.textContent = data.last_checked;
+        if (done) done();
+      })
+      .catch(function () {
+        if (btn) { btn.classList.remove('loading'); btn.innerHTML = ''; }
+        if (done) done();
+      });
+  }
 
-        .ping-btn.loading {
-            pointer-events: none;
-            opacity: 0.6;
-        }
+  function showNginxConfig(id, label) {
+    document.getElementById('nginx-server-label').textContent = label;
+    document.getElementById('nginx-config-text').textContent = 'Loading...';
+    document.getElementById('nginx-modal').classList.add('open');
+    fetch('/admin/api/servers/' + id + '/nginx-config')
+      .then(function (r) { return r.text(); })
+      .then(function (text) { document.getElementById('nginx-config-text').textContent = text; })
+      .catch(function (e) { document.getElementById('nginx-config-text').textContent = 'Lỗi: ' + e.message; });
+  }
 
-        .ping-btn.loading::before {
-            content: '⏳';
-            animation: spin 1s linear infinite;
-            display: inline-block;
-        }
-    </style>
+  function copyNginxConfig() {
+    var text = document.getElementById('nginx-config-text').textContent;
+    navigator.clipboard.writeText(text).then(function () { showToast('success', 'Nginx config đã được copy!'); });
+  }
 
-    <script>
-        function showToast(ok, message) {
-            var t = document.getElementById('ping-toast');
-            t.style.display = 'flex';
-            t.style.borderColor = ok ? 'rgba(52,211,153,0.4)' : 'rgba(239,68,68,0.4)';
-            t.innerHTML =
-                '<span style="font-size:22px">' + (ok ? '✅' : '❌') + '</span>' +
-                '<span style="font-size:13px;color:var(--text-primary);line-height:1.4">' + message + '</span>';
-            clearTimeout(window._toastTimer);
-            window._toastTimer = setTimeout(function () {
-                t.style.display = 'none';
-            }, 4000);
-        }
+  document.getElementById('nginx-modal').addEventListener('click', function (e) {
+    if (e.target === this) this.classList.remove('open');
+  });
+</script>
 
-        function updateStatusBadge(id, status) {
-            var badge = document.getElementById('status-' + id);
-            if (!badge) return;
-            // Remove old classes
-            badge.className = 'status-badge';
-            badge.removeAttribute('style');
-            if (status === 'live') {
-                badge.classList.add('badge', 'badge-live');
-                badge.textContent = 'LIVE';
-            } else if (status === 'die') {
-                badge.classList.add('badge', 'badge-die');
-                badge.textContent = 'DIE';
-            } else if (status === 'r2') {
-                badge.style.cssText = 'background:rgba(52,211,153,0.1);color:#34d399;border:1px solid rgba(52,211,153,0.3);padding:3px 10px;border-radius:20px;font-size:11px;display:inline-block;';
-                badge.textContent = 'CDN';
-            } else {
-                badge.classList.add('badge', 'badge-unknown');
-                badge.textContent = 'UNKNOWN';
-            }
-        }
-
-        function pingServer(id, btn) {
-            if (btn) { btn.classList.add('loading'); btn.textContent = ''; }
-
-            fetch('/admin/api/servers/' + id + '/ping', { method: 'POST' })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    if (btn) { btn.classList.remove('loading'); btn.textContent = '🔍'; }
-                    updateStatusBadge(id, data.status);
-                    var checked = document.getElementById('checked-' + id);
-                    if (checked && data.last_checked) checked.textContent = data.last_checked;
-                    showToast(data.ok, data.message);
-                })
-                .catch(function (e) {
-                    if (btn) { btn.classList.remove('loading'); btn.textContent = '🔍'; }
-                    showToast(false, 'Lỗi kết nối: ' + e.message);
-                });
-        }
-
-        function pingAll() {
-            var allBtn = document.getElementById('ping-all-btn');
-            var btns = document.querySelectorAll('.ping-btn');
-            if (allBtn) { allBtn.disabled = true; allBtn.textContent = '⏳ Đang ping...'; }
-            var ids = Array.from(btns).map(function (b) { return parseInt(b.dataset.id); });
-            var pending = ids.length;
-            if (!pending) return;
-
-            ids.forEach(function (id) {
-                var btn = document.querySelector('.ping-btn[data-id="' + id + '"]');
-                pingServerSilent(id, btn, function () {
-                    pending--;
-                    if (pending === 0 && allBtn) {
-                        allBtn.disabled = false;
-                        allBtn.textContent = '🔄 Ping All';
-                        showToast(true, 'Đã kiểm tra toàn bộ ' + ids.length + ' server!');
-                    }
-                });
-            });
-        }
-
-        function pingServerSilent(id, btn, done) {
-            if (btn) { btn.classList.add('loading'); btn.textContent = ''; }
-            fetch('/admin/api/servers/' + id + '/ping', { method: 'POST' })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    if (btn) { btn.classList.remove('loading'); btn.textContent = '🔍'; }
-                    updateStatusBadge(id, data.status);
-                    var checked = document.getElementById('checked-' + id);
-                    if (checked && data.last_checked) checked.textContent = data.last_checked;
-                    if (done) done();
-                })
-                .catch(function () {
-                    if (btn) { btn.classList.remove('loading'); btn.textContent = '🔍'; }
-                    if (done) done();
-                });
-        }
-    </script>
-
-    <%- include('../partials/footer') %>
+<%- include('../partials/footer') %>

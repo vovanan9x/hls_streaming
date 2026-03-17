@@ -1,9 +1,13 @@
 /**
  * services/queue.js
  * FIFO encode queue — hỗ trợ:
- *   - Local encode (như cũ — fallback)
- *   - Remote worker dispatch (nếu có worker rảnh)
+ *   - Local encode (fallback khi không có worker)
+ *   - Remote worker dispatch (qua processVideo → dispatchFileToWorker)
  *   - Cancel job đang chạy hoặc đang chờ
+ *
+ * NOTE: Việc tìm worker và dispatch file sang worker được xử lý
+ *       bởi processVideo() trong routes/admin.js, KHÔNG phải ở đây.
+ *       Queue chỉ đơn giản là lên lịch và gọi processor tuần tự.
  */
 
 const EventEmitter = require('events');
@@ -12,8 +16,8 @@ class EncodeQueue extends EventEmitter {
     constructor() {
         super();
         this.queue = [];            // pending jobs
-        this.running = false;       // đang encode local
-        this.current = null;        // videoId đang encode local
+        this.running = false;       // đang encode local hoặc dispatching
+        this.current = null;        // videoId đang xử lý
         this._cancelled = new Set();
         this.remoteJobs = new Map(); // videoId → { worker, job, dispatchedAt }
     }
@@ -70,38 +74,16 @@ class EncodeQueue extends EventEmitter {
     /** Gọi khi worker báo xong (từ callback route) */
     markRemoteDone(videoId) {
         this.remoteJobs.delete(videoId);
+        // Cho phép queue tiếp tục xử lý job tiếp theo
+        if (!this.running) {
+            this._next();
+        }
     }
 
     async _next() {
         if (this.queue.length === 0) return;
+        if (this.running) return; // đang xử lý job khác
 
-        // Thử dispatch sang remote worker trước
-        try {
-            const { findIdleWorker, dispatchToWorker } = require('./workerPool');
-            const worker = await findIdleWorker();
-            if (worker) {
-                const job = this.queue.shift();
-                if (this._cancelled.has(job.videoId)) {
-                    this._cancelled.delete(job.videoId);
-                    this._next();
-                    return;
-                }
-                const ok = await dispatchToWorker(worker, job);
-                if (ok) {
-                    this.remoteJobs.set(job.videoId, { worker, job, dispatchedAt: new Date() });
-                    // Thử tiếp → worker thứ 2 có thể cũng rảnh
-                    this._next();
-                    return;
-                } else {
-                    this.queue.unshift(job); // Dispatch thất bại → encode local
-                }
-            }
-        } catch (e) {
-            console.warn('[Queue] Worker dispatch error:', e.message);
-        }
-
-        // Fallback: encode local
-        if (this.running || this.queue.length === 0) return;
         this.running = true;
         const job = this.queue.shift();
         this.current = job.videoId;
@@ -114,12 +96,22 @@ class EncodeQueue extends EventEmitter {
             return;
         }
 
-        console.log(`[Queue] Local encode videoId=${job.videoId} (${this.queue.length} remaining)`);
+        console.log(`[Queue] Processing videoId=${job.videoId} (${this.queue.length} remaining in queue)`);
         this.emit('start', job.videoId);
 
         try {
+            // processVideo() sẽ tự quyết định: dispatch sang worker hay encode local
             await this._processVideo(job.videoId, job.videoFilePath, job.videoFileName, job.autoThumb, job.qualities);
-            this.emit('done', job.videoId);
+
+            // Nếu processVideo() return sớm (dispatched sang worker),
+            // remoteJobs sẽ có entry → đánh dấu là đang chờ callback.
+            // Nếu job được dispatch sang worker, ta vẫn cho queue chạy tiếp
+            // (worker xử lý song song — markRemoteDone() sẽ gọi _next() sau)
+            if (!this.remoteJobs.has(job.videoId)) {
+                // Encode local đã xong
+                this.emit('done', job.videoId);
+            }
+            // Nếu đang ở remoteJobs → callback của worker sẽ emit done sau
         } catch (err) {
             if (this._cancelled.has(job.videoId)) {
                 this._cancelled.delete(job.videoId);
@@ -130,7 +122,7 @@ class EncodeQueue extends EventEmitter {
         } finally {
             this.running = false;
             this.current = null;
-            this._next();
+            this._next(); // xử lý job tiếp theo trong queue
         }
     }
 

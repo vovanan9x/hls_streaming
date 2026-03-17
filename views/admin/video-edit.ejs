@@ -1,79 +1,244 @@
 <%- include('../partials/header') %>
 
-    <% if (error) { %>
-        <div class="alert alert-error">⚠️ <%= error %>
+<style>
+  .edit-grid { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .edit-grid { grid-template-columns: 1fr; } }
+
+  .edit-section-label {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--text-muted); margin: 20px 0 10px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .edit-section-label:first-child { margin-top: 0; }
+
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 100px; font-size: 12px; font-weight: 600;
+  }
+  .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .status-ready   { background: rgba(52,211,153,0.12); color: #34d399; }
+  .status-ready .dot { background: #34d399; }
+  .status-error   { background: rgba(239,68,68,0.12); color: #f87171; }
+  .status-error .dot { background: #f87171; }
+  .status-processing { background: rgba(251,191,36,0.12); color: #fbbf24; }
+  .status-processing .dot { background: #fbbf24; animation: pulse-dot 1s infinite; }
+  .status-uploading  { background: rgba(34,211,238,0.12); color: #22d3ee; }
+  .status-uploading .dot  { background: #22d3ee; animation: pulse-dot 1s infinite; }
+  .status-queued  { background: rgba(107,114,128,0.15); color: #9ca3af; }
+  .status-queued .dot { background: #9ca3af; }
+
+  .preview-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .preview-thumb { width: 100%; aspect-ratio: 16/9; border-radius: var(--radius-sm); object-fit: cover; background: var(--bg-input); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .preview-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .preview-thumb-placeholder { width: 100%; aspect-ratio: 16/9; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; }
+  .link-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .link-row a { font-size: 12.5px; color: var(--accent); text-decoration: none; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .link-row a:hover { text-decoration: underline; }
+  .copy-mini { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px; cursor: pointer; color: var(--text-secondary); transition: all .15s; flex-shrink: 0; }
+  .copy-mini:hover { border-color: var(--accent); color: var(--accent); }
+
+  .meta-row { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 12px; color: var(--text-muted); }
+  .meta-row strong { color: var(--text-secondary); }
+
+  .readonly-input {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 12px; font-size: 13px; color: var(--text-muted); width: 100%; font-family: monospace;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default;
+  }
+</style>
+
+<% if (error) { %>
+<script>window.addEventListener('DOMContentLoaded', function() { showToast('error', <%- JSON.stringify(error) %>); });</script>
+<% } %>
+<% if (success) { %>
+<script>window.addEventListener('DOMContentLoaded', function() { showToast('success', <%- JSON.stringify(success) %>); });</script>
+<% } %>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+  <a href="/admin/videos" class="btn btn-ghost btn-sm">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><polyline points="15 18 9 12 15 6"/></svg>
+    Danh sách
+  </a>
+  <div style="flex:1;font-size:13px;font-weight:600;color:var(--text-secondary);">
+    Chỉnh sửa Video &nbsp;·&nbsp; <span style="color:var(--accent);">#<%= video.id %></span>
+  </div>
+  <%
+    var statusClass = 'status-' + video.status;
+    var statusLabel = { ready:'Ready', processing:'Processing', uploading:'Uploading', queued:'Queue', error:'Lỗi' }[video.status] || video.status;
+  %>
+  <span class="status-pill <%= statusClass %>">
+    <span class="dot"></span><%= statusLabel %>
+  </span>
+</div>
+
+<form action="/admin/videos/<%= video.id %>/edit" method="POST" id="edit-form">
+<div class="edit-grid">
+
+  <!-- ── Left: Edit form ── -->
+  <div>
+    <div class="card" style="padding:24px;">
+
+      <!-- Core info -->
+      <div class="edit-section-label">Thông tin cơ bản</div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Tiêu đề *</label>
+        <input type="text" name="title" class="form-input" value="<%= video.title %>" required placeholder="Tên video...">
+      </div>
+
+      <div class="field-row" style="margin-bottom:14px;">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">IDAH <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(ID tuỳ chỉnh)</span></label>
+          <input type="text" name="idah" class="form-input" value="<%= video.idah || '' %>" placeholder="VD: ABC123">
         </div>
-        <% } %>
-            <% if (success) { %>
-                <div class="alert alert-success">✅ <%= success %>
-                </div>
-                <% } %>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Hiển thị</label>
+          <select name="visibility" class="form-select">
+            <option value="public"  <%= (video.visibility || 'public') === 'public'  ? 'selected' : '' %>>🌐 Công khai</option>
+            <option value="private" <%= (video.visibility || 'public') === 'private' ? 'selected' : '' %>>🔒 Riêng tư</option>
+          </select>
+        </div>
+      </div>
 
-                    <a href="/admin/videos" class="btn btn-ghost" style="margin-bottom:20px;">← Quay lại danh sách</a>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Mô tả</label>
+        <textarea name="description" class="form-textarea" style="min-height:90px;" placeholder="Nhập mô tả video..."><%= video.description || '' %></textarea>
+      </div>
 
-                    <form action="/admin/videos/<%= video.id %>/edit" method="POST">
-                        <div class="card">
-                            <div class="card-title">Thông tin Video #<%= video.id %>
-                            </div>
-                            <br>
-                            <div class="form-group">
-                                <label class="form-label">Tiêu đề</label>
-                                <input type="text" name="title" class="form-input" value="<%= video.title %>" required>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Mô tả</label>
-                                <textarea name="description"
-                                    class="form-textarea"><%= video.description || '' %></textarea>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label class="form-label">Link M3U8</label>
-                                    <input type="text" name="m3u8_url" class="form-input"
-                                        value="<%= video.m3u8_url || '' %>" placeholder="/storage/hls/...">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Link Iframe</label>
-                                    <input type="text" name="iframe_url" class="form-input"
-                                        value="<%= video.iframe_url || '' %>" placeholder="/embed/...">
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label class="form-label">Trạng thái</label>
-                                    <input type="text" class="form-input" value="<%= video.status %>" disabled
-                                        style="opacity:0.6">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Cập nhật lần cuối</label>
-                                    <input type="text" class="form-input" value="<%= video.updated_at %>" disabled
-                                        style="opacity:0.6">
-                                </div>
-                            </div>
-                        </div>
+      <!-- Links -->
+      <div class="edit-section-label" style="margin-top:22px;">Đường dẫn</div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Link M3U8</label>
+        <input type="text" name="m3u8_url" class="form-input" value="<%= video.m3u8_url || '' %>" placeholder="https://...">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Link Iframe / Embed</label>
+        <input type="text" name="iframe_url" class="form-input" value="<%= video.iframe_url || '' %>" placeholder="/embed/<%= video.id %>">
+      </div>
 
-                        <div class="card">
-                            <div class="card-title">Preview</div>
-                            <br>
-                            <% if (video.thumbnail) { %>
-                                <div style="margin-bottom:12px;">
-                                    <img src="/uploads/thumbnails/<%= video.thumbnail %>"
-                                        style="max-width:320px;border-radius:8px;border:1px solid var(--border-color);">
-                                </div>
-                                <% } %>
-                                    <% if (video.m3u8_url) { %>
-                                        <div style="margin-bottom:8px;">
-                                            <span style="color:var(--text-muted);font-size:13px;">Player URL:</span>
-                                            <a href="/embed/<%= video.id %>" target="_blank"
-                                                style="color:var(--accent);font-size:13px;">/embed/<%= video.id %></a>
-                                        </div>
-                                        <% } %>
-                        </div>
+    </div><!-- /card -->
 
-                        <div style="display:flex;gap:10px;">
-                            <button type="submit" class="btn btn-primary" style="padding:11px 28px;">💾 Lưu thay
-                                đổi</button>
-                            <a href="/admin/videos" class="btn btn-ghost" style="padding:11px 28px;">Huỷ</a>
-                        </div>
-                    </form>
+    <!-- Actions -->
+    <div style="display:flex;gap:10px;margin-top:16px;align-items:center;">
+      <button type="submit" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:7px;padding:10px 24px;font-size:14px;font-weight:600;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex-shrink:0;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Lưu thay đổi
+      </button>
+      <a href="/admin/videos" class="btn btn-ghost" style="display:inline-flex;align-items:center;padding:10px 20px;font-size:14px;">Huỷ</a>
+    </div>
+  </div>
 
-                    <%- include('../partials/footer') %>
+  <!-- ── Right: Preview panel ── -->
+  <div>
+    <!-- Thumbnail / Preview -->
+    <div class="preview-card">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);margin-bottom:12px;">Xem trước</div>
+
+      <% if (video.thumbnail) { %>
+        <div class="preview-thumb">
+          <img src="/uploads/thumbnails/<%= video.thumbnail %>" alt="Thumbnail">
+        </div>
+      <% } else { %>
+        <div class="preview-thumb-placeholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:36px;height:36px;color:var(--text-muted);">
+            <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+          </svg>
+        </div>
+      <% } %>
+
+      <!-- Links -->
+      <% if (video.m3u8_url) { %>
+      <div class="link-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;color:var(--text-muted);flex-shrink:0;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <a href="<%= video.m3u8_url %>" target="_blank" title="<%= video.m3u8_url %>"><%= video.m3u8_url %></a>
+        <button type="button" class="copy-mini" onclick="copyText('<%= video.m3u8_url %>', this)" title="Copy M3U8">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+      </div>
+      <% } %>
+
+      <% if (video.iframe_url || video.id) { %>
+      <div class="link-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;color:var(--text-muted);flex-shrink:0;"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <a href="/embed/<%= video.id %>" target="_blank">/embed/<%= video.id %></a>
+        <button type="button" class="copy-mini" onclick="copyText('/embed/<%= video.id %>', this)" title="Copy Embed">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+      </div>
+      <% } %>
+
+      <!-- Meta -->
+      <div class="meta-row">
+        <span>Server</span>
+        <strong><%= video.server_id ? (servers.find(function(s){return s.id===video.server_id;}) || {}).label || '—' : 'Local' %></strong>
+      </div>
+      <div class="meta-row">
+        <span>Tạo lúc</span>
+        <strong><%= video.created_at %></strong>
+      </div>
+      <div class="meta-row">
+        <span>Cập nhật</span>
+        <strong><%= video.updated_at %></strong>
+      </div>
+      <% if (video.qualities) {
+           var qs = [];
+           try { qs = JSON.parse(video.qualities); } catch(e) {}
+           if (qs.length) { %>
+      <div class="meta-row">
+        <span>Chất lượng</span>
+        <span>
+          <% qs.forEach(function(q) { %><span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(139,92,246,0.12);color:var(--accent);font-weight:700;margin-left:3px;"><%= q %></span><% }); %>
+        </span>
+      </div>
+      <% }} %>
+    </div>
+
+    <!-- Danger zone (admin) -->
+    <div style="margin-top:14px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius);padding:16px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#f87171;margin-bottom:12px;">⚠ Vùng nguy hiểm</div>
+      <% if (video.status !== 'ready') { %>
+      <form action="/admin/videos/<%= video.id %>/cancel" method="POST" style="margin-bottom:8px;" onsubmit="return confirm('Stop và xoá video này?')">
+        <button type="submit" class="btn btn-sm" style="width:100%;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          Stop & Xoá video
+        </button>
+      </form>
+      <% } %>
+      <% if (video.status === 'error') { %>
+      <button type="button" class="btn btn-sm" style="width:100%;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);color:#a78bfa;margin-bottom:8px;" onclick="retryThisVideo(<%= video.id %>)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Thử lại (Retry)
+      </button>
+      <% } %>
+      <form action="/admin/videos/<%= video.id %>/delete" method="POST" onsubmit="return confirm('Xoá vĩnh viễn video \"<%= video.title %>\"?')">
+        <button type="submit" class="btn btn-sm" style="width:100%;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          Xoá vĩnh viễn
+        </button>
+      </form>
+    </div>
+
+  </div><!-- /right -->
+</div><!-- /edit-grid -->
+</form>
+
+<script>
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.innerHTML;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;color:var(--success)"><polyline points="20 6 9 17 4 12"/></svg>';
+    setTimeout(function() { btn.innerHTML = orig; }, 1800);
+  });
+}
+function retryThisVideo(id) {
+  fetch('/admin/api/videos/' + id + '/retry', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) { showToast('success', 'Đã thêm vào hàng đợi retry!'); setTimeout(function() { location.href = '/admin/videos'; }, 1200); }
+      else showToast('error', d.message || 'Không thể retry');
+    }).catch(function() { showToast('error', 'Lỗi kết nối'); });
+}
+</script>
+
+<%- include('../partials/footer') %>

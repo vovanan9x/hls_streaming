@@ -1,17 +1,17 @@
 /**
  * HLS Encode Worker Server
  * Chạy độc lập trên server encode (Server 2, 3...)
- * 
+ *
  * Setup:
  *   1. Copy thư mục /worker lên server encode
  *   2. npm install
  *   3. Tạo .env với WORKER_TOKEN và APP_URL
  *   4. npm start
- * 
+ *
  * Yêu cầu:
  *   - ffmpeg cài sẵn (apt install ffmpeg)
- *   - Storage Box mount tại /mnt/storagebox (sshfs)
- *   - Cùng mount point với app server
+ *   - multer: npm install multer
+ *   - ssh2-sftp-client: npm install ssh2-sftp-client (đã có trong package.json)
  */
 
 require('dotenv').config();
@@ -20,6 +20,8 @@ const path = require('path');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
 const axios = require('axios');
+const multer = require('multer');
+const SFTPClient = require('ssh2-sftp-client');
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -28,9 +30,13 @@ const PORT = process.env.WORKER_PORT || 4000;
 const WORKER_TOKEN = process.env.WORKER_TOKEN || 'change-this-secret-token';
 const APP_URL = process.env.APP_URL || 'http://app-server:3000'; // URL của app server
 
-// Storage Box mount point (phải giống app server)
+// Storage Box mount point (chỉ dùng cho legacy /encode endpoint)
 const STORAGE_BASE = process.env.HLS_OUTPUT_DIR || '/mnt/storagebox/hls';
 const UPLOAD_BASE = process.env.UPLOAD_DIR || '/mnt/storagebox/uploads';
+
+// Thư mục tạm để lưu file nhận từ app (upload-encode flow)
+const TMP_DIR = process.env.WORKER_TMP_DIR || '/tmp/worker_uploads';
+fs.mkdirSync(TMP_DIR, { recursive: true });
 
 // Quality presets (giữ đồng bộ với app server)
 // sd: encode xuống tối đa 720p (không upscale nếu gốc nhỏ hơn)
@@ -48,6 +54,16 @@ const QUALITY_PRESETS = {
 // ====== State ======
 let currentJob = null; // { videoId, pid, startedAt }
 const runningCmds = new Map(); // videoId → ffmpeg command
+
+// ====== Multer cho /upload-encode ======
+const tmpStorage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, TMP_DIR),
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname) || '.mp4';
+        cb(null, `video_${Date.now()}${ext}`);
+    }
+});
+const tmpUpload = multer({ storage: tmpStorage });
 
 // ====== Middleware: Auth ======
 function auth(req, res, next) {
@@ -67,10 +83,82 @@ app.get('/status', auth, (req, res) => {
         job: currentJob ? { videoId: currentJob.videoId, startedAt: currentJob.startedAt } : null,
         uptime: process.uptime(),
         storageOk: fs.existsSync(STORAGE_BASE),
+        tmpDir: TMP_DIR,
     });
 });
 
-/** POST /encode — App gửi job encode mới */
+/**
+ * POST /upload-encode — App gửi file video thực sự (multipart/form-data)
+ * Fields:
+ *   - video (file): file video
+ *   - videoId (text): ID video trong DB
+ *   - qualities (text): JSON array, e.g. '["sd"]'
+ *   - autoThumb (text): "true"/"false"
+ *   - callbackToken (text): token để báo callback
+ *   - serverConfig (text): JSON object { ip, port, username, password, storage_path, cdn_url }
+ */
+app.post('/upload-encode', auth, async (req, res) => {
+    // Dùng multer single() như middleware promise để tương thích multer 2.x
+    try {
+        await new Promise((resolve, reject) => {
+            tmpUpload.single('video')(req, res, (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
+    } catch (multerErr) {
+        return res.status(400).json({ error: `Upload file lỗi: ${multerErr.message}` });
+    }
+
+    if (currentJob) {
+        // Xóa file vừa upload vì worker bận
+        if (req.file) {
+            try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+        }
+        return res.status(409).json({ error: 'Worker đang bận', currentVideoId: currentJob.videoId });
+    }
+
+    if (!req.file) {
+        return res.status(400).json({ error: 'Không có file video được gửi kèm' });
+    }
+
+    const { videoId, callbackToken } = req.body;
+    if (!videoId) {
+        try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+        return res.status(400).json({ error: 'Thiếu videoId' });
+    }
+
+    let qualities = ['sd'];
+    try { qualities = JSON.parse(req.body.qualities || '["sd"]'); } catch (e) { /* default */ }
+
+    const autoThumb = req.body.autoThumb === 'true' || req.body.autoThumb === true;
+
+    let serverConfig = null;
+    try { serverConfig = JSON.parse(req.body.serverConfig || 'null'); } catch (e) { /* null */ }
+
+    const videoFilePath = req.file.path;
+    const videoFileName = req.file.filename;
+
+    console.log(`[Worker] Nhận file upload-encode: videoId=${videoId}, file=${videoFileName}, qualities=${qualities}`);
+
+    // Trả về ngay để app không bị block
+    res.json({ ok: true, message: 'File đã nhận, bắt đầu encode...' });
+
+    // Chạy encode async
+    processJob({
+        videoId,
+        videoFilePath,
+        videoFileName,
+        qualities,
+        autoThumb,
+        callbackToken,
+        serverConfig,   // config để tự SFTP
+        cleanupAfter: true, // xóa file tạm sau khi xong
+    });
+});
+
+
+/** POST /encode — Legacy: App gửi job encode (dùng shared storage) */
 app.post('/encode', auth, async (req, res) => {
     if (currentJob) {
         return res.status(409).json({ error: 'Worker đang bận', currentVideoId: currentJob.videoId });
@@ -90,7 +178,7 @@ app.post('/encode', auth, async (req, res) => {
     // Trả về ngay để app không bị block
     res.json({ ok: true, message: 'Job đã nhận, bắt đầu encode...' });
 
-    // Chạy encode async
+    // Chạy encode async (legacy: không tự SFTP)
     processJob({ videoId, videoFilePath, videoFileName, qualities: qualities || ['sd'], autoThumb, callbackToken });
 });
 
@@ -135,7 +223,7 @@ function encodeQuality(inputPath, outputDir, preset, qualityName, totalDur, onPr
             outputOpts.push(`-vf scale=${preset.width}:${preset.height}:force_original_aspect_ratio=decrease,pad=${preset.width}:${preset.height}:(ow-iw)/2:(oh-ih)/2`);
         } else if (preset.scaleDown === true && preset.maxHeight) {
             // SD: giới hạn chiều cao tối đa, không upscale, không pad
-            outputOpts.push(`-vf scale=-2:min(ih\,${preset.maxHeight})`);
+            outputOpts.push(`-vf scale=-2:min(ih\\,${preset.maxHeight})`);
         }
         // HD: không thêm filter scale
         if (preset.videoBitrate === '0') {
@@ -160,7 +248,7 @@ function encodeQuality(inputPath, outputDir, preset, qualityName, totalDur, onPr
         const cmd = ffmpeg(inputPath)
             .outputOptions(outputOpts)
             .output(m3u8)
-            .on('start', () => console.log(`[Worker] Encoding ${qualityName} for ${videoId}...`))
+            .on('start', () => console.log(`[Worker] Encoding ${qualityName} for video ${videoId}...`))
             .on('progress', progress => {
                 let pct = 0;
                 if (totalDur > 0 && progress.timemark) {
@@ -218,12 +306,72 @@ async function reportDone(videoId, ok, m3u8Url, thumbnailName, error, callbackTo
     }
 }
 
-async function processJob({ videoId, videoFilePath, videoFileName, qualities, autoThumb, callbackToken }) {
-    currentJob = { videoId, startedAt: new Date().toISOString() };
-    console.log(`[Worker] START job videoId=${videoId} qualities=${qualities}`);
+/**
+ * Upload toàn bộ thư mục HLS lên SFTP server
+ * @param {object} serverConfig - { ip, port, username, password, storage_path }
+ * @param {string} localHlsDir - Thư mục HLS local (vd: /tmp/hls/123)
+ * @param {string} videoId - ID video (dùng làm tên thư mục trên server)
+ */
+async function sftpUploadHls(serverConfig, localHlsDir, videoId) {
+    const sftp = new SFTPClient();
+    const remotePath = `${(serverConfig.storage_path || '/var/hls-storage').replace(/\/$/, '')}/hls/${videoId}`;
 
-    const hlsDir = path.join(STORAGE_BASE, videoId.toString());
-    let m3u8Url = null;
+    try {
+        await sftp.connect({
+            host: serverConfig.ip,
+            port: parseInt(serverConfig.port) || 22,
+            username: serverConfig.username,
+            password: serverConfig.password,
+            readyTimeout: 30000,
+        });
+
+        console.log(`[Worker] SFTP connected to ${serverConfig.ip}, uploading hls/${videoId}...`);
+
+        // Đảm bảo thư mục đích tồn tại
+        await sftp.mkdir(remotePath, true).catch(() => { /* đã tồn tại */ });
+
+        // Upload tất cả file trong thư mục HLS
+        const files = getAllFilesRecursive(localHlsDir);
+        for (const localFile of files) {
+            const relPath = path.relative(localHlsDir, localFile);
+            const remoteFile = `${remotePath}/${relPath.replace(/\\/g, '/')}`;
+            const remoteDir = path.dirname(remoteFile);
+            await sftp.mkdir(remoteDir, true).catch(() => { /* đã tồn tại */ });
+            await sftp.put(localFile, remoteFile);
+        }
+
+        console.log(`[Worker] SFTP upload done: ${remotePath} (${files.length} files)`);
+    } finally {
+        await sftp.end().catch(() => { /* ignore */ });
+    }
+}
+
+/** Lấy tất cả file trong thư mục (đệ quy) */
+function getAllFilesRecursive(dir) {
+    const results = [];
+    const items = fs.readdirSync(dir);
+    for (const item of items) {
+        const full = path.join(dir, item);
+        if (fs.statSync(full).isDirectory()) {
+            results.push(...getAllFilesRecursive(full));
+        } else {
+            results.push(full);
+        }
+    }
+    return results;
+}
+
+async function processJob({ videoId, videoFilePath, videoFileName, qualities, autoThumb, callbackToken, serverConfig, cleanupAfter }) {
+    currentJob = { videoId, startedAt: new Date().toISOString() };
+    console.log(`[Worker] START job videoId=${videoId} qualities=${qualities} sftp=${serverConfig ? serverConfig.ip : 'none (legacy)'}`);
+
+    // Nếu có serverConfig → encode vào thư mục tạm local, sau đó SFTP
+    // Nếu không có serverConfig → encode thẳng vào shared storage (legacy)
+    const useTmpHls = !!serverConfig;
+    const hlsDir = useTmpHls
+        ? path.join(TMP_DIR, `hls_${videoId}`)
+        : path.join(STORAGE_BASE, videoId.toString());
+
     let thumbnailName = '';
 
     try {
@@ -244,15 +392,11 @@ async function processJob({ videoId, videoFilePath, videoFileName, qualities, au
 
         writeMasterPlaylist(hlsDir, qualities);
 
-        // m3u8Url sẽ được app server tự build từ server config (CDN URL hoặc IP)
-        // Worker chỉ cần báo "done" để app biết update DB
-        m3u8Url = null; // App tự tính
-
         // Thumbnail
         if (autoThumb) {
             try {
                 const thumbName = `thumb_${videoId}.jpg`;
-                const thumbDir = path.join(UPLOAD_BASE, '..', 'thumbnails');
+                const thumbDir = useTmpHls ? path.join(TMP_DIR, 'thumbnails') : path.join(UPLOAD_BASE, '..', 'thumbnails');
                 fs.mkdirSync(thumbDir, { recursive: true });
                 await new Promise((resolve, reject) => {
                     ffmpeg(videoFilePath)
@@ -265,22 +409,60 @@ async function processJob({ videoId, videoFilePath, videoFileName, qualities, au
             }
         }
 
+        // ── SFTP Upload (chỉ khi có serverConfig) ──
+        if (serverConfig) {
+            console.log(`[Worker] Bắt đầu SFTP upload lên ${serverConfig.ip}...`);
+            await sftpUploadHls(serverConfig, hlsDir, videoId);
+
+            // Upload thumbnail nếu có
+            if (thumbnailName && autoThumb) {
+                const localThumb = path.join(TMP_DIR, 'thumbnails', thumbnailName);
+                if (fs.existsSync(localThumb)) {
+                    const sftp2 = new SFTPClient();
+                    try {
+                        await sftp2.connect({
+                            host: serverConfig.ip,
+                            port: parseInt(serverConfig.port) || 22,
+                            username: serverConfig.username,
+                            password: serverConfig.password,
+                            readyTimeout: 30000,
+                        });
+                        const remoteThumbDir = `${(serverConfig.storage_path || '/var/hls-storage').replace(/\/$/, '')}/thumbnails`;
+                        await sftp2.mkdir(remoteThumbDir, true).catch(() => { /* ok */ });
+                        await sftp2.put(localThumb, `${remoteThumbDir}/${thumbnailName}`);
+                        console.log(`[Worker] Thumbnail SFTP uploaded: ${thumbnailName}`);
+                    } finally {
+                        await sftp2.end().catch(() => { /* ignore */ });
+                    }
+                }
+            }
+        }
+
+        // Báo done về App — App tự build m3u8_url từ serverInfo config
         await reportDone(videoId, true, null, thumbnailName, null, callbackToken);
         console.log(`[Worker] DONE videoId=${videoId}`);
+
     } catch (err) {
         console.error(`[Worker] FAILED videoId=${videoId}:`, err.message);
         await reportDone(videoId, false, null, '', err.message, callbackToken);
     } finally {
         currentJob = null;
+
+        // Dọn file tạm
+        if (cleanupAfter) {
+            setTimeout(() => {
+                try { if (fs.existsSync(videoFilePath)) fs.unlinkSync(videoFilePath); } catch (e) { /* ignore */ }
+                try { if (fs.existsSync(hlsDir)) fs.rmSync(hlsDir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
+                console.log(`[Worker] Cleaned up tmp files for videoId=${videoId}`);
+            }, 2000);
+        }
     }
 }
 
 // ====== Start ======
 app.listen(PORT, () => {
     console.log(`🔧 HLS Encode Worker đang chạy: http://0.0.0.0:${PORT}`);
-    console.log(`   Storage: ${STORAGE_BASE}`);
+    console.log(`   Tmp Dir: ${TMP_DIR}`);
     console.log(`   App URL: ${APP_URL}`);
-    if (!fs.existsSync(STORAGE_BASE)) {
-        console.warn(`⚠️  Storage path chưa mount: ${STORAGE_BASE}`);
-    }
+    console.log(`   Legacy Storage: ${STORAGE_BASE}`);
 });

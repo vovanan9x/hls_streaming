@@ -1,124 +1,232 @@
 <!DOCTYPE html>
 <html lang="vi">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>
-        <%= typeof title !=='undefined' ? title : 'Admin' %> — HLS Streaming
-    </title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/public/css/style.css">
-</head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= typeof title !== 'undefined' ? title : 'Admin' %> — HLS Streaming</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/css/style.css?v=<%= Date.now() %>">
+  <style>
+    /* FALLBACK: Re-declare CSS variables in case style.css fails to load/cache */
+    :root {
+      --text-primary: #f0f0fa;
+      --text-secondary: #b0b0d0;
+      --text-muted: #8888aa;
+      --bg-primary: #080810;
+      --bg-card: #0f0f1e;
+      --bg-card-hover: #141428;
+      --bg-input: #0a0a1a;
+      --border: rgba(255,255,255,0.07);
+      --border-light: rgba(255,255,255,0.12);
+      --accent: #8b5cf6;
+      --accent-hover: #7c3aed;
+      --accent-dim: rgba(139,92,246,0.15);
+      --success: #22c55e;
+      --success-bg: rgba(34,197,94,0.1);
+      --danger: #ef4444;
+      --danger-bg: rgba(239,68,68,0.1);
+      --danger-bdr: rgba(239,68,68,0.3);
+      --warning: #f59e0b;
+      --warning-bg: rgba(245,158,11,0.1);
+      --warning-bdr: rgba(245,158,11,0.3);
+      --info: #3b82f6;
+      --info-bg: rgba(59,130,246,0.1);
+    }
+    /* CRITICAL: hard-code table text colors */
+    tbody td { color: #f0f0fa !important; font-size: 13px; }
+    thead th { color: #60607a !important; }
+    .td-title { font-weight: 600 !important; color: #f0f0fa !important; }
+    .td-title small { color: #60607a !important; font-size: 11.5px !important; }
+    tbody tr:hover td { color: #ffffff !important; }
+    .card-title { font-weight: 600 !important; }
+    .stat-value { font-weight: 700 !important; }
+    .col-secondary { color: #9090b0 !important; font-size: 12.5px !important; }
+    .col-muted { color: #70708a !important; font-size: 12px !important; }
+  </style>
 
+
+</head>
 <body>
-    <div class="app-wrapper">
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo">
-                    <span class="logo-icon">🎬</span>
-                    <span class="logo-text">HLS Stream</span>
-                </div>
-            </div>
-            <nav class="sidebar-nav">
-                <a href="/admin/home"
-                    class="nav-item<%= typeof title !== 'undefined' && title === 'Tổng quan' ? ' active' : '' %>">
-                    <span class="nav-icon">🏠</span>
-                    <span>Tổng quan</span>
-                </a>
-                <a href="/admin/upload"
-                    class="nav-item<%= typeof title !== 'undefined' && title === 'Upload Video' ? ' active' : '' %>">
-                    <span class="nav-icon">📤</span>
-                    <span>Upload Video</span>
-                </a>
-                <a href="/admin/videos"
-                    class="nav-item<%= typeof title !== 'undefined' && title === 'Quản lí Video' ? ' active' : '' %>">
-                    <span class="nav-icon">🎞️</span>
-                    <span>Quản lí Video</span>
-                </a>
-                <% if (typeof currentUser !=='undefined' && currentUser && currentUser.role==='administrator' ) { %>
-                    <a href="/admin/servers"
-                        class="nav-item<%= typeof title !== 'undefined' && title === 'Quản lí Server' ? ' active' : '' %>">
-                        <span class="nav-icon">🖥️</span>
-                        <span>Quản lí Server</span>
-                    </a>
-                    <a href="/admin/users"
-                        class="nav-item<%= typeof title !== 'undefined' && title === 'Quản lí Tài khoản' ? ' active' : '' %>">
-                        <span class="nav-icon">👥</span>
-                        <span>Tài khoản</span>
-                    </a>
-                    <a href="/admin/delete-requests"
-                        class="nav-item<%= typeof title !== 'undefined' && title === 'Yêu cầu Xoá Video' ? ' active' : '' %>"
-                        style="position:relative;">
-                        <span class="nav-icon">🗑️</span>
-                        <span>Yêu cầu Xoá</span>
-                        <% if (typeof pendingDeleteCount !=='undefined' && pendingDeleteCount> 0) { %>
-                            <span
-                                style="position:absolute;top:6px;right:10px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--danger);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;">
-                                <%= pendingDeleteCount %>
-                            </span>
-                            <% } %>
-                    </a>
-                    <% } %>
-                        <a href="/admin/analytics"
-                            class="nav-item<%= typeof title !== 'undefined' && title === 'Thống kê' ? ' active' : '' %>">
-                            <span class="nav-icon">📊</span><span>Thống kê</span>
-                        </a>
-                        <% if (typeof currentUser !=='undefined' && currentUser && currentUser.role==='administrator' )
-                            { %>
-                            <a href="/admin/settings"
-                                class="nav-item<%= typeof title !== 'undefined' && title === 'Cài đặt Hệ thống' ? ' active' : '' %>">
-                                <span class="nav-icon">⚙️</span><span>Cài đặt</span>
-                            </a>
-                            <a href="/admin/api-docs"
-                                class="nav-item<%= typeof title !== 'undefined' && title === 'API Documentation' ? ' active' : '' %>">
-                                <span class="nav-icon">📡</span><span>API Docs</span>
-                            </a>
-                            <a href="/admin/errors"
-                                class="nav-item<%= typeof title !== 'undefined' && title === 'Nhật ký Lỗi' ? ' active' : '' %>">
-                                <span class="nav-icon">🚨</span><span>Nhật ký Lỗi</span>
-                            </a>
-                            <a href="/admin/workers"
-                                class="nav-item<%= typeof title !== 'undefined' && title === 'Encode Workers' ? ' active' : '' %>">
-                                <span class="nav-icon">🔧</span><span>Encode Workers</span>
-                            </a>
-                            <a href="/admin/cdn"
-                                class="nav-item<%= typeof title !== 'undefined' && title === 'CDN Domains (CF Pool)' ? ' active' : '' %>">
-                                <span class="nav-icon">🌐</span><span>CDN Pool</span>
-                            </a>
-                            <% } %>
-                                <div class="nav-divider"></div>
-                                <a href="/play" class="nav-item" target="_blank">
-                                    <span class="nav-icon">▶️</span>
-                                    <span>Player Demo</span>
-                                </a>
-            </nav>
-            <div class="sidebar-footer">
-                <% if (typeof currentUser !=='undefined' && currentUser) { %>
-                    <div class="user-info">
-                        <div class="user-name">
-                            <%= currentUser.display_name || currentUser.username %>
-                        </div>
-                        <div class="user-role">
-                            <span class="badge badge-<%= currentUser.role === 'administrator' ? 'live' : 'unknown' %>"
-                                style="font-size:9px;padding:2px 6px;">
-                                <%= currentUser.role==='administrator' ? 'ADMIN' : 'UPLOADER' %>
-                            </span>
-                        </div>
-                    </div>
-                    <a href="/auth/logout" class="nav-item" style="margin-top:8px;font-size:13px;color:var(--danger);">
-                        <span class="nav-icon">🚪</span>
-                        <span>Đăng xuất</span>
-                    </a>
-                    <% } %>
-                        <span class="version">v1.0.0</span>
-            </div>
-        </aside>
-        <main class="main-content">
-            <header class="content-header">
-                <h1>
-                    <%= typeof title !=='undefined' ? title : '' %>
-                </h1>
-            </header>
-            <div class="content-body">
+<div class="app-wrapper">
+
+  <%
+    var _p = locals.title || '';
+    function _nav(t) { return _p === t ? ' active' : ''; }
+    var _isAdmin = typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'administrator';
+    var _isAuth  = typeof currentUser !== 'undefined' && currentUser;
+    var _initials = _isAuth ? (currentUser.display_name || currentUser.username || '?').charAt(0).toUpperCase() : '?';
+  %>
+
+  <!-- ═══════════════════════════════════════════
+       SIDEBAR
+  ═══════════════════════════════════════════ -->
+  <aside class="sidebar">
+
+    <!-- Logo -->
+    <div class="sidebar-header">
+      <div class="logo">
+        <div class="logo-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+        </div>
+        <span class="logo-text">HLS Stream</span>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="sidebar-nav">
+
+      <!-- MAIN -->
+      <div class="nav-section-label">Main</div>
+
+      <a href="/admin/home" class="nav-item<%= _nav('Tổng quan') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        <span>Tổng quan</span>
+      </a>
+
+      <a href="/admin/upload" class="nav-item<%= _nav('Upload Video') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <span>Upload Video</span>
+      </a>
+
+      <a href="/admin/videos" class="nav-item<%= _nav('Quản lí Video') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>
+        </svg>
+        <span>Quản lí Video</span>
+      </a>
+
+      <a href="/admin/analytics" class="nav-item<%= _nav('Thống kê') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
+        </svg>
+        <span>Thống kê</span>
+      </a>
+
+      <% if (_isAdmin) { %>
+      <!-- ADMIN -->
+      <div class="nav-divider"></div>
+      <div class="nav-section-label">Admin</div>
+
+      <a href="/admin/servers" class="nav-item<%= _nav('Quản lí Server') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+        </svg>
+        <span>Quản lí Server</span>
+      </a>
+
+      <a href="/admin/users" class="nav-item<%= _nav('Quản lí Tài khoản') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        <span>Tài khoản</span>
+      </a>
+
+      <a href="/admin/delete-requests" class="nav-item<%= _nav('Yêu cầu Xoá Video') %>" style="position:relative;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+        </svg>
+        <span>Yêu cầu Xoá</span>
+        <% if (typeof pendingDeleteCount !== 'undefined' && pendingDeleteCount > 0) { %>
+          <span class="nav-badge"><%= pendingDeleteCount %></span>
+        <% } %>
+      </a>
+
+      <!-- SYSTEM -->
+      <div class="nav-divider"></div>
+      <div class="nav-section-label">Hệ thống</div>
+
+      <a href="/admin/workers" class="nav-item<%= _nav('Encode Workers') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+        </svg>
+        <span>Encode Workers</span>
+      </a>
+
+      <a href="/admin/cdn" class="nav-item<%= _nav('CDN Domains (CF Pool)') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        <span>CDN Pool</span>
+      </a>
+
+      <a href="/admin/errors" class="nav-item<%= _nav('Nhật ký Lỗi') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span>Nhật ký Lỗi</span>
+      </a>
+
+      <a href="/admin/processes" class="nav-item<%= _nav('Theo dõi Tiến trình') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <span>Tiến trình</span>
+      </a>
+
+      <a href="/admin/settings" class="nav-item<%= _nav('Cài đặt Hệ thống') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span>Cài đặt</span>
+      </a>
+
+      <a href="/admin/guide" class="nav-item<%= _nav('Hướng dẫn') %>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><path d="M12 16h.01"/>
+        </svg>
+        <span>Hướng dẫn</span>
+      </a>
+      <% } %>
+
+
+
+    </nav>
+
+    <!-- User / Footer -->
+    <div class="sidebar-footer">
+      <% if (_isAuth) { %>
+        <div class="user-card">
+          <div class="user-avatar"><%= _initials %></div>
+          <div class="user-info-text">
+            <div class="user-name"><%= currentUser.display_name || currentUser.username %></div>
+            <span class="user-role-badge <%= currentUser.role === 'administrator' ? 'admin' : 'uploader' %>">
+              <%= currentUser.role === 'administrator' ? 'Admin' : 'Uploader' %>
+            </span>
+          </div>
+        </div>
+        <a href="/auth/logout" class="logout-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span>Đăng xuất</span>
+        </a>
+      <% } %>
+      <span class="version">v1.0.0</span>
+    </div>
+
+  </aside>
+
+  <!-- ═══════════════════════════════════════════
+       MAIN CONTENT
+  ═══════════════════════════════════════════ -->
+  <main class="main-content">
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <span class="topbar-title"><%= typeof title !== 'undefined' ? title : '' %></span>
+      <div class="topbar-spacer"></div>
+      <% if (_isAuth) { %>
+        <div class="user-avatar" style="width:30px;height:30px;font-size:12px;cursor:default;" title="<%= currentUser.display_name || currentUser.username %>">
+          <%= _initials %>
+        </div>
+      <% } %>
+    </div>
+
+    <div class="content-body">

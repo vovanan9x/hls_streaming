@@ -1,203 +1,155 @@
 <%- include('../partials/header') %>
 
-    <style>
-        .stat-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
+<style>
+  .stat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:24px; }
+</style>
 
-        .stat-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius);
-            padding: 22px 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            transition: var(--transition);
-        }
+<!-- My stats -->
+<div class="section-title">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+  Video của tôi — <%= currentUser.display_name || currentUser.username %>
+</div>
 
-        .stat-card:hover {
-            border-color: var(--border-light);
-            transform: translateY(-2px);
-        }
-
-        .stat-card.accent {
-            border-left: 3px solid var(--accent);
-        }
-
-        .stat-card.green {
-            border-left: 3px solid var(--success);
-        }
-
-        .stat-card.yellow {
-            border-left: 3px solid var(--warning);
-        }
-
-        .stat-card.red {
-            border-left: 3px solid var(--danger);
-        }
-
-        .stat-card.blue {
-            border-left: 3px solid var(--info);
-        }
-
-        .stat-icon {
-            font-size: 28px;
-        }
-
-        .stat-value {
-            font-size: 32px;
-            font-weight: 700;
-            letter-spacing: -1px;
-            line-height: 1;
-        }
-
-        .stat-label {
-            font-size: 12px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .section-title {
-            font-size: 15px;
-            font-weight: 600;
-            margin-bottom: 14px;
-            color: var(--text-secondary);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .section-title::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: var(--border-color);
-        }
-    </style>
-
-    <!-- Thống kê của tôi -->
-    <div class="section-title">📊 Video của tôi (<%= currentUser.display_name || currentUser.username %>)</div>
-    <div class="stat-grid">
-        <div class="stat-card accent">
-            <span class="stat-icon">🎞️</span>
-            <span class="stat-value">
-                <%= stats.myTotal %>
-            </span>
-            <span class="stat-label">Tổng video đã upload</span>
-        </div>
-        <div class="stat-card green">
-            <span class="stat-icon">✅</span>
-            <span class="stat-value">
-                <%= stats.myReady %>
-            </span>
-            <span class="stat-label">Video sẵn sàng phát</span>
-        </div>
-        <div class="stat-card yellow">
-            <span class="stat-icon">⚙️</span>
-            <span class="stat-value">
-                <%= stats.myProcessing %>
-            </span>
-            <span class="stat-label">Đang xử lí</span>
-        </div>
+<div class="stat-grid">
+  <div class="stat-card accent">
+    <div class="stat-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/>
+      </svg>
     </div>
+    <span class="stat-value"><%= stats.myTotal %></span>
+    <span class="stat-label">Tổng video đã upload</span>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+    <span class="stat-value"><%= stats.myReady %></span>
+    <span class="stat-label">Video sẵn sàng phát</span>
+  </div>
+  <div class="stat-card yellow">
+    <div class="stat-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+    </div>
+    <span class="stat-value"><%= stats.myProcessing %></span>
+    <span class="stat-label">Đang xử lý</span>
+  </div>
+</div>
 
-    <!-- Thống kê toàn hệ thống -->
-    <div class="section-title">🌐 Toàn hệ thống</div>
-    <div class="stat-grid">
-        <div class="stat-card accent">
-            <span class="stat-icon">📹</span>
-            <span class="stat-value">
-                <%= stats.totalVideos %>
-            </span>
-            <span class="stat-label">Tổng video (tất cả user)</span>
-        </div>
-        <div class="stat-card green">
-            <span class="stat-icon">▶️</span>
-            <span class="stat-value">
-                <%= stats.totalReady %>
-            </span>
-            <span class="stat-label">Video sẵn sàng</span>
-        </div>
-        <div class="stat-card yellow">
-            <span class="stat-icon">⏳</span>
-            <span class="stat-value">
-                <%= stats.totalProcessing %>
-            </span>
-            <span class="stat-label">Đang xử lí</span>
-        </div>
-        <div class="stat-card red">
-            <span class="stat-icon">❌</span>
-            <span class="stat-value">
-                <%= stats.totalError %>
-            </span>
-            <span class="stat-label">Lỗi</span>
-        </div>
-        <% if (stats.totalUsers !==null) { %>
-            <div class="stat-card blue">
-                <span class="stat-icon">👥</span>
-                <span class="stat-value">
-                    <%= stats.totalUsers %>
-                </span>
-                <span class="stat-label">Tài khoản</span>
-            </div>
-            <div class="stat-card<%= stats.liveServers > 0 ? ' green' : ' red' %>">
-                <span class="stat-icon">🖥️</span>
-                <span class="stat-value">
-                    <%= stats.liveServers %>/<%= stats.totalServers %>
-                </span>
-                <span class="stat-label">Server hoạt động</span>
-            </div>
+<!-- System stats -->
+<div class="section-title">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+  Toàn hệ thống
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card accent">
+    <div class="stat-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+      </svg>
+    </div>
+    <span class="stat-value"><%= stats.totalVideos %></span>
+    <span class="stat-label">Tổng video (tất cả user)</span>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>
+      </svg>
+    </div>
+    <span class="stat-value"><%= stats.totalReady %></span>
+    <span class="stat-label">Video sẵn sàng</span>
+  </div>
+  <div class="stat-card yellow">
+    <div class="stat-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+    </div>
+    <span class="stat-value"><%= stats.totalProcessing %></span>
+    <span class="stat-label">Đang xử lý</span>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+      </svg>
+    </div>
+    <span class="stat-value"><%= stats.totalError %></span>
+    <span class="stat-label">Lỗi</span>
+  </div>
+  <% if (stats.totalUsers !== null) { %>
+  <div class="stat-card blue">
+    <div class="stat-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+    </div>
+    <span class="stat-value"><%= stats.totalUsers %></span>
+    <span class="stat-label">Tài khoản</span>
+  </div>
+  <div class="stat-card <%= stats.liveServers > 0 ? 'green' : 'red' %>">
+    <div class="stat-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+      </svg>
+    </div>
+    <span class="stat-value"><%= stats.liveServers %>/<%= stats.totalServers %></span>
+    <span class="stat-label">Server hoạt động</span>
+  </div>
+  <% } %>
+</div>
+
+<!-- Recent uploads -->
+<% if (recentVideos.length > 0) { %>
+<div class="section-title" style="margin-top:8px;">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+  Upload gần đây (của tôi)
+</div>
+<div class="card" style="padding:0;">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tiêu đề</th>
+          <th>Server</th>
+          <th>Trạng thái</th>
+          <th>Ngày tạo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% recentVideos.forEach(function(v) { %>
+        <tr>
+          <td style="font-weight:600;color:#f0f0fa;"><%= v.title %></td>
+          <td style="color:#70708a;font-size:12.5px"><%= v.server_label || 'Local' %></td>
+          <td>
+            <% if (v.status === 'ready') { %>
+              <span class="badge badge-ready"><span class="badge-dot"></span>Ready</span>
+            <% } else if (v.status === 'processing') { %>
+              <span class="badge badge-processing"><span class="badge-dot"></span>Processing (<%= v.progress || 0 %>%)</span>
+            <% } else { %>
+              <span class="badge badge-error"><span class="badge-dot"></span>Lỗi</span>
             <% } %>
-    </div>
+          </td>
+          <td style="color:#70708a;font-size:12.5px;white-space:nowrap"><%= v.created_at %></td>
+          <td>
+            <a href="/admin/videos" class="btn btn-ghost btn-sm">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              Xem
+            </a>
+          </td>
+        </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% } %>
 
-    <!-- Video mới nhất của tôi -->
-    <% if (recentVideos.length> 0) { %>
-        <div class="section-title">🕐 Upload gần đây (của tôi)</div>
-        <div class="card" style="padding:0;">
-            <table style="margin:0">
-                <thead>
-                    <tr>
-                        <th>Tiêu đề</th>
-                        <th>Server</th>
-                        <th>Trạng thái</th>
-                        <th>Ngày tạo</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <% recentVideos.forEach(function(v) { %>
-                        <tr>
-                            <td style="font-weight:500">
-                                <%= v.title %>
-                            </td>
-                            <td style="color:var(--text-muted);font-size:13px">
-                                <%= v.server_label || 'Local' %>
-                            </td>
-                            <td>
-                                <% if (v.status==='ready' ) { %>
-                                    <span class="badge badge-ready">READY</span>
-                                    <% } else if (v.status==='processing' ) { %>
-                                        <span class="badge badge-processing">PROCESSING (<%= v.progress || 0 %>%)</span>
-                                        <% } else { %>
-                                            <span class="badge badge-error">LỖI</span>
-                                            <% } %>
-                            </td>
-                            <td style="color:var(--text-muted);font-size:13px;white-space:nowrap">
-                                <%= v.created_at %>
-                            </td>
-                            <td>
-                                <a href="/admin/videos" class="btn btn-ghost btn-sm">Xem →</a>
-                            </td>
-                        </tr>
-                        <% }) %>
-                </tbody>
-            </table>
-        </div>
-        <% } %>
-
-            <%- include('../partials/footer') %>
+<%- include('../partials/footer') %>

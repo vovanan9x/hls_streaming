@@ -1,0 +1,54 @@
+<%
+/*
+  Shared pagination partial.
+  Required variables (passed via EJS include data or parent scope):
+    currentPage  - int
+    totalPages   - int
+    total        - int
+    pageSize     - int
+    baseUrl      - string, e.g. '/admin/videos' or '/admin/errors?type=sftp'
+                   (include existing query params except `page`)
+*/
+var _cp  = typeof currentPage !== 'undefined' ? currentPage : 1;
+var _tp  = typeof totalPages  !== 'undefined' ? totalPages  : 1;
+var _tot = typeof total       !== 'undefined' ? total       : 0;
+var _ps  = typeof pageSize    !== 'undefined' ? pageSize    : 20;
+var _bu  = typeof paginationBase !== 'undefined' ? paginationBase : '?';
+// ensure baseUrl ends with ? or &
+var _sep = _bu.indexOf('?') === -1 ? '?' : (_bu.slice(-1) === '&' ? '' : '&');
+%>
+<% if (_tp > 1) { %>
+<div class="pagination" style="margin-top:16px;">
+
+  <% if (_cp > 1) { %>
+    <a href="<%= _bu %><%= _sep %>page=<%= _cp - 1 %>" class="page-btn" title="Trang trước">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+  <% } %>
+
+  <%
+    var _start = Math.max(1, _cp - 2);
+    var _end   = Math.min(_tp, _cp + 2);
+    if (_start > 1) { %>
+      <a href="<%= _bu %><%= _sep %>page=1" class="page-btn">1</a>
+      <% if (_start > 2) { %><span class="page-btn" style="pointer-events:none;opacity:.4;">…</span><% } %>
+  <% }
+    for (var _pi = _start; _pi <= _end; _pi++) { %>
+      <a href="<%= _bu %><%= _sep %>page=<%= _pi %>" class="page-btn <%= _pi === _cp ? 'active' : '' %>"><%= _pi %></a>
+  <% }
+    if (_end < _tp) { %>
+      <% if (_end < _tp - 1) { %><span class="page-btn" style="pointer-events:none;opacity:.4;">…</span><% } %>
+      <a href="<%= _bu %><%= _sep %>page=<%= _tp %>" class="page-btn"><%= _tp %></a>
+  <% } %>
+
+  <% if (_cp < _tp) { %>
+    <a href="<%= _bu %><%= _sep %>page=<%= _cp + 1 %>" class="page-btn" title="Trang sau">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><polyline points="9 18 15 12 9 6"/></svg>
+    </a>
+  <% } %>
+
+  <span style="font-size:11.5px;color:var(--text-muted);margin-left:8px;">
+    Trang <%= _cp %>/<%= _tp %> &nbsp;·&nbsp; <strong style="color:var(--text-secondary);"><%= _tot %></strong> kết quả
+  </span>
+</div>
+<% } %>

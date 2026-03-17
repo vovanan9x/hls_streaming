@@ -1,360 +1,313 @@
 <%- include('../partials/header') %>
-    <style>
-        .filter-bar {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            align-items: center;
-            margin-bottom: 20px;
-        }
 
-        .filter-bar a,
-        .filter-bar button {
-            padding: 5px 14px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            text-decoration: none;
-            border: 1px solid var(--border-color);
-            background: var(--bg-card);
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
+<style>
+  .log-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    background: var(--bg-card);
+    transition: border-color 0.18s, background 0.18s;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .log-card:hover { background: var(--bg-card-hover); }
+  .log-card.type-encode  { border-left: 3px solid #f59e0b; }
+  .log-card.type-sftp    { border-left: 3px solid #818cf8; }
+  .log-card.type-r2      { border-left: 3px solid #f97316; }
+  .log-card.type-thumb   { border-left: 3px solid #06b6d4; }
+  .log-card.type-unknown { border-left: 3px solid #6b7280; }
 
-        .filter-bar a:hover,
-        .filter-bar button:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
+  .log-header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:5px; }
 
-        .filter-bar a.active {
-            background: rgba(139, 92, 246, 0.12);
-            border-color: var(--accent);
-            color: var(--accent);
-        }
+  .log-type-badge {
+    font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 50px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .lt-encode { background:rgba(245,158,11,0.12); color:#f59e0b; border:1px solid rgba(245,158,11,0.25); }
+  .lt-sftp   { background:rgba(129,140,248,0.12); color:#818cf8; border:1px solid rgba(129,140,248,0.25); }
+  .lt-r2     { background:rgba(249,115,22,0.12);  color:#f97316; border:1px solid rgba(249,115,22,0.25); }
+  .lt-thumb  { background:rgba(6,182,212,0.12);   color:#06b6d4; border:1px solid rgba(6,182,212,0.25); }
+  .lt-unknown{ background:rgba(107,114,128,0.12); color:#9ca3af; border:1px solid rgba(107,114,128,0.25); }
 
-        .filter-bar .btn-clear {
-            background: rgba(239, 68, 68, 0.08);
-            border-color: rgba(239, 68, 68, 0.3);
-            color: #ef4444;
-        }
+  .log-video-name { font-size:12.5px; font-weight:600; color:var(--text-primary); }
+  .log-server-lbl { font-size:11.5px; color:var(--text-muted); }
 
-        .filter-bar .btn-clear:hover {
-            background: rgba(239, 68, 68, 0.18);
-        }
+  .del-btn {
+    margin-left:auto; background:none; border:none;
+    color:var(--text-muted); cursor:pointer;
+    padding:3px 5px; border-radius:var(--radius-xs);
+    display:flex; align-items:center; justify-content:center;
+    transition:var(--transition); flex-shrink:0;
+  }
+  .del-btn:hover { color:var(--danger); background:var(--danger-bg); }
+  .del-btn svg { width:13px; height:13px; }
 
-        .log-card {
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 16px 18px;
-            margin-bottom: 12px;
-            background: var(--bg-card);
-            transition: border-color 0.2s;
-        }
+  .log-message { font-size:13px; color:var(--text-primary); font-weight:500; word-break:break-word; margin-bottom:5px; }
 
-        .log-card:hover {
-            border-color: rgba(255, 255, 255, 0.15);
-        }
+  .log-meta { font-size:11.5px; color:var(--text-muted); display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
 
-        .log-card.type-encode {
-            border-left: 3px solid #f59e0b;
-        }
+  .toggle-stack {
+    font-size:11px; color:var(--text-muted); cursor:pointer;
+    background:none; border:none; font-family:var(--font);
+    display:inline-flex; align-items:center; gap:4px;
+    padding:0; transition:color 0.15s;
+  }
+  .toggle-stack:hover { color:var(--accent); }
+  .toggle-stack svg { width:10px; height:10px; }
 
-        .log-card.type-sftp {
-            border-left: 3px solid #818cf8;
-        }
+  .log-stack {
+    display:none; background:rgba(0,0,0,0.4);
+    border:1px solid var(--border-light); border-radius:var(--radius-xs);
+    padding:10px 14px; font-size:11px; font-family:monospace;
+    color:#c9d1d9; white-space:pre-wrap; word-break:break-all;
+    margin-top:8px; max-height:200px; overflow-y:auto; line-height:1.5;
+  }
 
-        .log-card.type-r2 {
-            border-left: 3px solid #f97316;
-        }
+  /* Filter chips */
+  .filter-chips { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+  .filter-chip {
+    padding:4px 12px; border-radius:50px; font-size:12px; font-weight:600;
+    text-decoration:none; border:1px solid var(--border);
+    background:var(--bg-input); color:var(--text-secondary);
+    cursor:pointer; transition:var(--transition);
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .filter-chip:hover { border-color:var(--accent); color:var(--accent); }
+  .filter-chip.active { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
+  .filter-chip.chip-clear { border-color:var(--danger-bdr); color:var(--danger); background:var(--danger-bg); }
+  .filter-chip.chip-clear:hover { background:rgba(239,68,68,0.18); }
 
-        .log-card.type-thumb {
-            border-left: 3px solid #06b6d4;
-        }
+  /* Stats mini-bar */
+  .err-stats {
+    display:flex; gap:10px; flex-wrap:wrap;
+    padding:10px 14px; margin-bottom:14px;
+    background:rgba(255,255,255,0.02);
+    border:1px solid var(--border); border-radius:8px;
+    font-size:12px;
+  }
+  .err-stat-item { display:flex; align-items:center; gap:5px; color:var(--text-muted); }
+  .err-stat-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+</style>
 
-        .log-card.type-unknown {
-            border-left: 3px solid #6b7280;
-        }
+<%
+  var typeMap = {
+    encode: { label: 'Encode', cls: 'lt-encode', dot: '#f59e0b' },
+    sftp:   { label: 'SFTP',   cls: 'lt-sftp',   dot: '#818cf8' },
+    r2:     { label: 'R2',     cls: 'lt-r2',     dot: '#f97316' },
+    thumb:  { label: 'Thumb',  cls: 'lt-thumb',  dot: '#06b6d4' },
+    unknown:{ label: 'Khác',   cls: 'lt-unknown',dot: '#6b7280' },
+  };
+%>
 
-        .log-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 8px;
-        }
-
-        .log-type-badge {
-            font-size: 10px;
-            font-weight: 700;
-            padding: 2px 10px;
-            border-radius: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .log-type-encode {
-            background: rgba(245, 158, 11, 0.15);
-            color: #f59e0b;
-            border: 1px solid rgba(245, 158, 11, 0.3);
-        }
-
-        .log-type-sftp {
-            background: rgba(129, 140, 248, 0.15);
-            color: #818cf8;
-            border: 1px solid rgba(129, 140, 248, 0.3);
-        }
-
-        .log-type-r2 {
-            background: rgba(249, 115, 22, 0.15);
-            color: #f97316;
-            border: 1px solid rgba(249, 115, 22, 0.3);
-        }
-
-        .log-type-thumb {
-            background: rgba(6, 182, 212, 0.15);
-            color: #06b6d4;
-            border: 1px solid rgba(6, 182, 212, 0.3);
-        }
-
-        .log-type-unknown {
-            background: rgba(107, 114, 128, 0.15);
-            color: #9ca3af;
-            border: 1px solid rgba(107, 114, 128, 0.3);
-        }
-
-        .log-meta {
-            font-size: 12px;
-            color: var(--text-muted);
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .log-message {
-            font-size: 13px;
-            color: var(--text-primary);
-            margin: 8px 0 4px;
-            word-break: break-word;
-        }
-
-        .log-stack {
-            display: none;
-            background: #0d1117;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 6px;
-            padding: 10px 14px;
-            font-size: 11px;
-            font-family: monospace;
-            color: #c9d1d9;
-            white-space: pre-wrap;
-            word-break: break-all;
-            margin-top: 8px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        .toggle-stack {
-            font-size: 11px;
-            color: var(--text-muted);
-            cursor: pointer;
-            text-decoration: underline;
-        }
-
-        .toggle-stack:hover {
-            color: var(--accent);
-        }
-
-        .del-btn {
-            margin-left: auto;
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            font-size: 15px;
-            padding: 2px 6px;
-            border-radius: 5px;
-        }
-
-        .del-btn:hover {
-            color: #ef4444;
-            background: rgba(239, 68, 68, 0.1);
-        }
-
-        .stat-chips {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 20px;
-        }
-
-        .stat-chip {
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            border: 1px solid;
-        }
-
-        .pager {
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            margin-top: 24px;
-        }
-
-        .pager a {
-            padding: 6px 14px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            font-size: 13px;
-            color: var(--text-secondary);
-            text-decoration: none;
-        }
-
-        .pager a.active {
-            background: var(--accent);
-            border-color: var(--accent);
-            color: #fff;
-        }
-
-        .pager a:hover:not(.active) {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-    </style>
-
-    <div class="card">
-        <!-- Header + filter -->
-        <div class="card-header" style="flex-wrap:wrap;gap:10px;">
-            <span class="card-title">🚨 Nhật ký Lỗi
-                <% if (total> 0) { %>
-                    <span style="font-size:13px;color:var(--text-muted);font-weight:400;">(tổng <%= total %> lỗi)</span>
-                    <% } %>
-            </span>
-            <% if (total> 0) { %>
-                <form action="/admin/errors/clear" method="POST" onsubmit="return confirm('Xoá toàn bộ log lỗi?')"
-                    style="margin:0;">
-                    <% if (filterType) { %><input type="hidden" name="type" value="<%= filterType %>">
-                        <% } %>
-                            <button type="submit" class="btn btn-danger btn-sm">🗑️ Xoá tất cả<% if(filterType) { %> (
-                                    <%= filterType %>)<% } %></button>
-                </form>
-                <% } %>
-        </div>
-
-        <!-- Stats chips -->
-        <% const typeColors={ encode: {bg:'rgba(245,158,11,0.12)', color:'#f59e0b', border:'rgba(245,158,11,0.35)',
-            label:'🎬 Encode'}, sftp: {bg:'rgba(129,140,248,0.12)', color:'#818cf8', border:'rgba(129,140,248,0.35)',
-            label:'🖥️ SFTP'}, r2: {bg:'rgba(249,115,22,0.12)', color:'#f97316', border:'rgba(249,115,22,0.35)',
-            label:'☁️ R2'}, thumb: {bg:'rgba(6,182,212,0.12)', color:'#06b6d4', border:'rgba(6,182,212,0.35)',
-            label:'🖼️ Thumb'}, unknown:{bg:'rgba(107,114,128,0.12)', color:'#9ca3af', border:'rgba(107,114,128,0.35)',
-            label:'❓ Khác'}, }; %>
-            <div class="filter-bar" style="margin-top:4px;">
-                <a href="/admin/errors" class="<%= !filterType ? 'active' : '' %>">Tất cả</a>
-                <% Object.keys(typeColors).forEach(function(t) { %>
-                    <a href="/admin/errors?type=<%= t %>" class="<%= filterType===t ? 'active' : '' %>">
-                        <%= typeColors[t].label %>
-                    </a>
-                    <% }) %>
-            </div>
-
-            <% if (logs.length===0) { %>
-                <div class="empty-state" style="padding:50px 0;">
-                    <div class="empty-state-icon">✅</div>
-                    <div class="empty-state-text">Không có lỗi nào</div>
-                    <div class="empty-state-hint">Tuyệt vời! Hệ thống đang hoạt động bình thường.</div>
-                </div>
-                <% } else { %>
-
-                    <!-- Log list -->
-                    <% logs.forEach(function(log) { const tc=typeColors[log.type] || typeColors.unknown; const
-                        hasStack=log.stack && log.stack.trim().length> 0;
-                        %>
-                        <div class="log-card type-<%= log.type %>" id="log-<%= log.id %>">
-                            <div class="log-header">
-                                <span class="log-type-badge log-type-<%= log.type %>">
-                                    <%= (typeColors[log.type]||typeColors.unknown).label %>
-                                </span>
-                                <% if (log.video_title) { %>
-                                    <span style="font-size:13px;color:var(--text-primary);font-weight:500;">🎬 <%=
-                                            log.video_title %></span>
-                                    <% } %>
-                                        <% if (log.video_id) { %>
-                                            <span style="font-size:11px;color:var(--text-muted);">ID: <%= log.video_id
-                                                    %></span>
-                                            <% } %>
-                                                <% if (log.server_label) { %>
-                                                    <span style="font-size:11px;color:var(--text-muted);">🖥️ <%=
-                                                            log.server_label %></span>
-                                                    <% } %>
-                                                        <button class="del-btn" onclick="deleteLog(<%= log.id %>)"
-                                                            title="Xoá log này">✕</button>
-                            </div>
-                            <div class="log-message">❌ <%= log.message %>
-                            </div>
-                            <div class="log-meta">
-                                <span>🕐 <%= log.created_at %></span>
-                                <% if (hasStack) { %>
-                                    <span class="toggle-stack" onclick="toggleStack(<%= log.id %>)">▶ Xem Stack
-                                        Trace</span>
-                                    <% } %>
-                            </div>
-                            <% if (hasStack) { %>
-                                <pre class="log-stack" id="stack-<%= log.id %>"><%= log.stack %></pre>
-                                <% } %>
-                        </div>
-                        <% }) %>
-
-                            <!-- Pagination -->
-                            <% if (totalPages> 1) { %>
-                                <div class="pager">
-                                    <% for(var p=1; p<=totalPages; p++) { %>
-                                        <a href="/admin/errors?page=<%= p %><%= filterType ? '&type='+filterType : '' %>"
-                                            class="<%= p===page ? 'active' : '' %>">
-                                            <%= p %>
-                                        </a>
-                                        <% } %>
-                                </div>
-                                <% } %>
-                                    <% } %>
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      Nhật ký Lỗi
+      <% if (total > 0) { %>
+        <span style="font-size:12.5px;color:var(--text-muted);font-weight:400;">(<%= total %> lỗi)</span>
+      <% } %>
     </div>
-
-    <div id="err-toast"
-        style="position:fixed;bottom:24px;right:24px;background:rgba(239,68,68,0.9);color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;display:none;z-index:9999;">
+    <div style="display:flex;gap:8px;align-items:center;">
+      <!-- Auto refresh toggle -->
+      <button id="refresh-btn" class="btn btn-ghost btn-sm btn-icon" title="Tự động làm mới (30s)" onclick="toggleAutoRefresh()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+          <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+      </button>
+      <% if (total > 0) { %>
+        <form action="/admin/errors/clear" method="POST" onsubmit="return confirm('Xoá toàn bộ log lỗi?')" style="margin:0;">
+          <% if (filterType) { %><input type="hidden" name="type" value="<%= filterType %>"><% } %>
+          <button type="submit" class="btn btn-danger btn-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            </svg>
+            Xoá<% if (filterType) { %> (<%= filterType %>)<% } %>
+          </button>
+        </form>
+      <% } %>
     </div>
+  </div>
 
-    <script>
-        function toggleStack(id) {
-            var el = document.getElementById('stack-' + id);
-            var btn = el.previousElementSibling.querySelector('.toggle-stack');
-            if (!el) return;
-            if (el.style.display === 'block') {
-                el.style.display = 'none';
-                if (btn) btn.textContent = '▶ Xem Stack Trace';
-            } else {
-                el.style.display = 'block';
-                if (btn) btn.textContent = '▼ Ẩn Stack Trace';
-            }
+  <!-- Error type stats -->
+  <% if (typeCounts && Object.keys(typeCounts).length > 0) { %>
+  <div class="err-stats">
+    <% Object.keys(typeMap).forEach(function(t) { %>
+      <% if (typeCounts[t] > 0) { %>
+      <span class="err-stat-item">
+        <span class="err-stat-dot" style="background:<%= typeMap[t].dot %>;"></span>
+        <strong style="color:var(--text-primary);"><%= typeCounts[t] %></strong>
+        <%= typeMap[t].label %>
+      </span>
+      <% } %>
+    <% }); %>
+  </div>
+  <% } %>
+
+  <!-- Filter chips -->
+  <div class="filter-chips">
+    <a href="/admin/errors" class="filter-chip <%= !filterType ? 'active' : '' %>">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      Tất cả
+    </a>
+    <% Object.keys(typeMap).forEach(function(t) { %>
+      <a href="/admin/errors?type=<%= t %>" class="filter-chip <%= filterType === t ? 'active' : '' %>">
+        <span style="width:7px;height:7px;border-radius:50%;background:<%= typeMap[t].dot %>;display:inline-block;"></span>
+        <%= typeMap[t].label %>
+      </a>
+    <% }); %>
+    <span id="refresh-status" style="margin-left:auto;font-size:11.5px;color:var(--text-muted);display:none;">
+      🔄 Auto-refresh: <span id="refresh-countdown">30</span>s
+    </span>
+  </div>
+
+  <% if (logs.length === 0) { %>
+    <div class="empty-state" style="padding:48px 0;">
+      <div class="empty-state-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <div class="empty-state-text">Không có lỗi nào</div>
+      <div class="empty-state-hint">Hệ thống đang hoạt động bình thường 👍</div>
+    </div>
+  <% } else { %>
+
+    <% logs.forEach(function(log) {
+      var tc = typeMap[log.type] || typeMap.unknown;
+      var hasStack = log.stack && log.stack.trim().length > 0;
+    %>
+    <div class="log-card type-<%= log.type %>" id="log-<%= log.id %>">
+      <div class="log-header">
+        <span class="log-type-badge <%= tc.cls %>"><%= tc.label %></span>
+
+        <% if (log.video_title) { %>
+          <span class="log-video-name">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;vertical-align:middle;margin-right:2px;"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            <%= log.video_title %>
+          </span>
+        <% } %>
+        <% if (log.video_id) { %><span class="log-server-lbl">#<%= log.video_id %></span><% } %>
+        <% if (log.server_label) { %>
+          <span class="log-server-lbl">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:9px;height:9px;vertical-align:middle;"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>
+            <%= log.server_label %>
+          </span>
+        <% } %>
+
+        <button class="del-btn" onclick="deleteLog(<%= log.id %>)" title="Xoá log">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="log-message"><%= log.message %></div>
+
+      <div class="log-meta">
+        <span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px;vertical-align:middle;margin-right:2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <%= log.created_at %>
+        </span>
+        <% if (hasStack) { %>
+          <button class="toggle-stack" onclick="toggleStack(<%= log.id %>)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ts-icon-<%= log.id %>"><polyline points="9 18 15 12 9 6"/></svg>
+            <span id="ts-label-<%= log.id %>">Stack trace</span>
+          </button>
+        <% } %>
+      </div>
+
+      <% if (hasStack) { %>
+        <pre class="log-stack" id="stack-<%= log.id %>"><%= log.stack %></pre>
+      <% } %>
+    </div>
+    <% }); %>
+
+    <!-- Pagination -->
+    <% var currentPage = page; var paginationBase = '/admin/errors' + (filterType ? '?type=' + filterType : ''); %>
+    <%- include('../partials/pagination') %>
+
+  <% } %>
+</div>
+
+<script>
+  function toggleStack(id) {
+    var el = document.getElementById('stack-' + id);
+    var icon = document.getElementById('ts-icon-' + id);
+    var label = document.getElementById('ts-label-' + id);
+    if (!el) return;
+    if (el.style.display === 'block') {
+      el.style.display = 'none';
+      if (label) label.textContent = 'Stack trace';
+      if (icon) icon.innerHTML = '<polyline points="9 18 15 12 9 6"/>';
+    } else {
+      el.style.display = 'block';
+      if (label) label.textContent = 'Ẩn';
+      if (icon) icon.innerHTML = '<polyline points="15 18 9 12 15 6"/>';
+    }
+  }
+
+  function deleteLog(id) {
+    fetch('/admin/api/errors/' + id + '/delete', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.ok) {
+          var el = document.getElementById('log-' + id);
+          if (el) {
+            el.style.transition = 'opacity 0.25s, transform 0.25s';
+            el.style.opacity = '0';
+            el.style.transform = 'translateX(10px)';
+            setTimeout(function () { el.remove(); }, 250);
+          }
+          showToast('success', 'Đã xoá log lỗi');
+        } else {
+          showToast('error', 'Không thể xoá log');
         }
+      })
+      .catch(function () { showToast('error', 'Lỗi kết nối'); });
+  }
 
-        function deleteLog(id) {
-            fetch('/admin/api/errors/' + id + '/delete', { method: 'POST' })
-                .then(function (r) { return r.json(); })
-                .then(function (d) {
-                    if (d.ok) {
-                        var el = document.getElementById('log-' + id);
-                        if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; setTimeout(function () { el.remove(); }, 300); }
-                    }
-                })
-                .catch(function () {
-                    var t = document.getElementById('err-toast');
-                    t.textContent = 'Không thể xoá log!';
-                    t.style.display = 'block';
-                    setTimeout(function () { t.style.display = 'none'; }, 3000);
-                });
-        }
-    </script>
+  // Auto refresh
+  var _refreshTimer = null;
+  var _countdown = 30;
+  var _countdownTimer = null;
+  var _refreshActive = false;
 
-    <%- include('../partials/footer') %>
+  function toggleAutoRefresh() {
+    var btn = document.getElementById('refresh-btn');
+    var status = document.getElementById('refresh-status');
+    _refreshActive = !_refreshActive;
+    if (_refreshActive) {
+      btn.style.color = 'var(--accent)';
+      btn.style.background = 'var(--accent-dim)';
+      if (status) status.style.display = 'inline';
+      startRefreshCountdown();
+    } else {
+      btn.style.color = '';
+      btn.style.background = '';
+      if (status) status.style.display = 'none';
+      clearTimeout(_refreshTimer);
+      clearInterval(_countdownTimer);
+    }
+  }
+
+  function startRefreshCountdown() {
+    _countdown = 30;
+    var el = document.getElementById('refresh-countdown');
+    clearInterval(_countdownTimer);
+    _countdownTimer = setInterval(function () {
+      _countdown--;
+      if (el) el.textContent = _countdown;
+      if (_countdown <= 0) {
+        clearInterval(_countdownTimer);
+        location.reload();
+      }
+    }, 1000);
+  }
+</script>
+
+<%- include('../partials/footer') %>

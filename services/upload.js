@@ -10,13 +10,28 @@ const THUMB_DIR = path.join(__dirname, '..', 'uploads', 'thumbnails');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(THUMB_DIR, { recursive: true });
 
+/** Detect if a URL is a Google Drive link */
+function isDriveUrl(url) {
+    if (!url) return false;
+    return /drive\.google\.com/.test(url) || /docs\.google\.com/.test(url);
+}
+
 /**
- * Download a remote file to local storage
- * @param {string} url - Remote file URL
+ * Download a remote file to local storage.
+ * Automatically uses the unlimited Drive downloader for Drive URLs.
+ * @param {string} url - Remote file URL (supports Drive and direct URLs)
  * @param {string} originalName - Original filename hint
- * @returns {Promise<{filePath: string, fileName: string}>}
+ * @param {function} onProgress - optional (downloaded, total) progress callback
+ * @returns {Promise<{filePath: string, fileName: string, method?: string}>}
  */
-async function downloadRemoteFile(url, originalName) {
+async function downloadRemoteFile(url, originalName, onProgress) {
+    // Route Drive URLs through the unlimited Drive service
+    if (isDriveUrl(url)) {
+        const gdrive = require('./gdrive');
+        return await gdrive.downloadDriveFileToUpload(url, onProgress);
+    }
+
+    // Standard direct URL download
     const ext = path.extname(originalName || url.split('?')[0]) || '.mp4';
     const fileName = `${crypto.randomUUID()}${ext}`;
     const filePath = path.join(UPLOAD_DIR, fileName);
@@ -25,8 +40,18 @@ async function downloadRemoteFile(url, originalName) {
         method: 'GET',
         url: url,
         responseType: 'stream',
-        timeout: 600000, // 10 min timeout
+        timeout: 1800000, // 30 min timeout (was 10 min)
     });
+
+    const totalSize = parseInt(response.headers['content-length'] || '0');
+    let downloaded = 0;
+
+    if (onProgress && totalSize > 0) {
+        response.data.on('data', (chunk) => {
+            downloaded += chunk.length;
+            onProgress(downloaded, totalSize);
+        });
+    }
 
     const writer = fs.createWriteStream(filePath);
     response.data.pipe(writer);

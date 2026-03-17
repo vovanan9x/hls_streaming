@@ -11,6 +11,64 @@
 
                     <!-- R2 & SFTP đã chuyển sang Quản lí Server -->
                     <div class="card" style="margin-bottom:20px;">
+                        <div class="card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px;"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+                          Hiển thị danh sách
+                        </div><br>
+                        <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Số kết quả tối đa trên mỗi trang ở các trang danh sách (Video, Lỗi, Tài khoản, Yêu cầu xoá).</p>
+                        <form action="/admin/settings/page-size" method="POST" style="display:flex;gap:12px;align-items:center;">
+                          <select name="page_size" class="form-select" style="width:auto;">
+                            <% [10,15,20,30,50,100].forEach(function(n) { %>
+                              <option value="<%= n %>" <%= (currentPageSize || 20) == n ? 'selected' : '' %>><%= n %> kết quả / trang</option>
+                            <% }); %>
+                          </select>
+                          <button type="submit" class="btn btn-primary btn-sm">Lưu</button>
+                        </form>
+                    </div>
+
+                    <div class="card" style="margin-bottom:20px;">
+                        <div class="card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                          Google Drive API (Service Account)
+                        </div><br>
+                        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+                          Cấu hình <strong>Service Account</strong> để tải file Drive không giới hạn, không bị virus-scan và không cần file public.<br>
+                          <span style="color:#94a3b8;">Chia sẻ file Drive với email Service Account để download.</span>
+                        </p>
+
+                        <% if (driveServiceEmail) { %>
+                          <div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;display:flex;align-items:center;gap:8px;">
+                            <span style="color:#34d399;">✔</span>
+                            <span style="color:var(--text-primary);">Service Account: <code><%= driveServiceEmail %></code></span>
+                            <button type="button" id="test-sa-btn" onclick="testSA()" class="btn btn-ghost btn-sm" style="margin-left:auto;">🔍 Test kết nối</button>
+                          </div>
+                        <% } else { %>
+                          <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#fbbf24;">
+                            ⚠ Chưa cấu hình Service Account — hệ thống sẽ dùng chế độ tải public (có thể bị giới hạn).
+                          </div>
+                        <% } %>
+
+                        <div id="sa-test-result" style="display:none;margin-bottom:12px;font-size:13px;padding:8px 12px;border-radius:6px;"></div>
+
+                        <form action="/admin/settings/gdrive-sa" method="POST">
+                          <div style="margin-bottom:12px;">
+                            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px;">JSON Key (Service Account)</label>
+                            <textarea name="service_account_json" rows="6"
+                              style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:11.5px;color:var(--text-primary);resize:vertical;"
+                              placeholder='{"type":"service_account","project_id":"...","client_email":"...","private_key":"-----BEGIN RSA PRIVATE KEY-----\n..."}'></textarea>
+                          </div>
+                          <div style="display:flex;gap:10px;align-items:center;">
+                            <button type="submit" class="btn btn-primary btn-sm">💾 Lưu SA</button>
+                            <% if (driveServiceEmail) { %>
+                              <form action="/admin/settings/gdrive-sa/remove" method="POST" style="margin:0;">
+                                <button type="submit" class="btn btn-ghost btn-sm" style="color:#f87171;" onclick="return confirm('Xoá Service Account?')">🗑 Xoá</button>
+                              </form>
+                            <% } %>
+                          </div>
+                        </form>
+                    </div>
+
+                    <div class="card" style="margin-bottom:20px;">
                         <div class="card-title">🖥️ Quản lí Server lưu trữ</div>
                         <br>
                         <p style="font-size:14px;color:var(--text-muted);margin-bottom:16px;">
@@ -86,6 +144,34 @@
                         function copyToken() {
                             navigator.clipboard.writeText(document.getElementById('token-text').textContent);
                             event.target.textContent = '✅'; setTimeout(() => { event.target.textContent = '📋 Copy'; }, 1500);
+                        }
+
+                        async function testSA() {
+                            const btn = document.getElementById('test-sa-btn');
+                            const result = document.getElementById('sa-test-result');
+                            if (btn) { btn.textContent = '⏳ Đang kiểm tra...'; btn.disabled = true; }
+                            try {
+                                const r = await fetch('/admin/api/gdrive/test');
+                                const data = await r.json();
+                                if (result) {
+                                    result.style.display = 'block';
+                                    if (data.ok) {
+                                        result.style.background = 'rgba(52,211,153,0.08)';
+                                        result.style.border = '1px solid rgba(52,211,153,0.2)';
+                                        result.style.color = '#34d399';
+                                        result.textContent = '✔ Kết nối thành công! Service Account hợp lệ.';
+                                    } else {
+                                        result.style.background = 'rgba(239,68,68,0.08)';
+                                        result.style.border = '1px solid rgba(239,68,68,0.2)';
+                                        result.style.color = '#f87171';
+                                        result.textContent = '✖ Lỗi: ' + (data.error || 'Kết nối thất bại');
+                                    }
+                                }
+                            } catch (e) {
+                                if (result) { result.style.display = 'block'; result.textContent = '✖ Lỗi mạng: ' + e.message; }
+                            } finally {
+                                if (btn) { btn.textContent = '🔍 Test kết nối'; btn.disabled = false; }
+                            }
                         }
                     </script>
 

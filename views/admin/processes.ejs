@@ -1,0 +1,405 @@
+<%- include('../partials/header') %>
+
+<style>
+  /* ── Process Monitor CSS ── */
+  .pm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 1100px) { .pm-grid { grid-template-columns: 1fr; } }
+
+  .pm-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 0; overflow: hidden; }
+  .pm-card-header {
+    display: flex; align-items: center; gap: 10px; padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+  }
+  .pm-card-header svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--accent); }
+  .pm-card-title { font-size: 13px; font-weight: 700; color: var(--text-primary); flex: 1; }
+  .pm-badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 100px; }
+  .pm-badge-active { background: rgba(52,211,153,0.15); color: #34d399; }
+  .pm-badge-idle   { background: rgba(107,114,128,0.15); color: #9ca3af; }
+  .pm-badge-warn   { background: rgba(251,191,36,0.15); color: #fbbf24; }
+  .pm-badge-error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .pm-badge-sftp   { background: rgba(34,211,238,0.15); color: #22d3ee; }
+
+  .pm-body { padding: 14px 18px; }
+  .pm-empty { text-align: center; padding: 28px 0; color: var(--text-muted); font-size: 13px; }
+  .pm-empty svg { width: 28px; height: 28px; margin: 0 auto 8px; display: block; opacity: .35; }
+
+  /* Active job row */
+  .pm-job { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .pm-job:last-child { border-bottom: none; }
+  .pm-job-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pm-job-title a { color: var(--text-primary); text-decoration: none; }
+  .pm-job-title a:hover { color: var(--accent); }
+  .pm-job-meta { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--text-muted); margin-bottom: 7px; }
+  .pm-job-meta .tag { background: rgba(255,255,255,0.05); border-radius: 4px; padding: 1px 6px; }
+
+  /* Progress bar */
+  .pm-bar-wrap { background: rgba(255,255,255,0.07); border-radius: 100px; height: 5px; overflow: hidden; }
+  .pm-bar-fill { height: 100%; border-radius: 100px; transition: width .5s ease; }
+  .pm-bar-encode { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+  .pm-bar-sftp   { background: linear-gradient(90deg, #22d3ee, #0ea5e9); }
+  .pm-bar-queue  { background: rgba(107,114,128,0.4); width: 100%; }
+
+  /* Worker status */
+  .pm-worker { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .pm-worker:last-child { border-bottom: none; }
+  .pm-worker-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .pm-worker-dot.online { background: #34d399; box-shadow: 0 0 6px rgba(52,211,153,.5); }
+  .pm-worker-dot.offline { background: #f87171; }
+  .pm-worker-dot.busy { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,.4); animation: pulse-dot .8s infinite; }
+  .pm-worker-info { flex: 1; min-width: 0; }
+  .pm-worker-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+  .pm-worker-url  { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Error log */
+  .pm-err { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .pm-err:last-child { border-bottom: none; }
+  .pm-err-type { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; height: fit-content; margin-top: 1px; }
+  .err-encode { background: rgba(251,191,36,0.15); color: #fbbf24; }
+  .err-sftp   { background: rgba(139,92,246,0.15); color: #a78bfa; }
+  .err-r2     { background: rgba(249,115,22,0.15); color: #fb923c; }
+  .err-thumb  { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .err-unknown{ background: rgba(107,114,128,0.15); color: #9ca3af; }
+  .pm-err-main { flex: 1; min-width: 0; }
+  .pm-err-title { font-size: 12.5px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pm-err-msg   { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pm-err-time  { font-size: 10.5px; color: var(--text-muted); flex-shrink: 0; margin-top: 2px; }
+
+  /* Refresh countdown ring */
+  .pm-header-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .pm-header-bar h1 { font-size: 16px; font-weight: 700; flex: 1; color: var(--text-primary); }
+  .pm-refresh-ring {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: conic-gradient(var(--accent) 0%, rgba(139,92,246,0.2) 0%);
+    display: flex; align-items: center; justify-content: center;
+    transition: background .1s;
+  }
+  .pm-refresh-ring svg { width: 14px; height: 14px; color: var(--accent); }
+
+  .pm-stat-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .pm-stat { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; display: flex; flex-direction: column; gap: 2px; }
+  .pm-stat-val { font-size: 20px; font-weight: 800; color: var(--text-primary); line-height: 1; }
+  .pm-stat-lbl { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.4} }
+</style>
+
+<!-- Header bar -->
+<div class="pm-header-bar">
+  <div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;display:inline-block;vertical-align:middle;margin-right:8px;color:var(--accent);">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+    </svg>
+    <span style="font-size:17px;font-weight:700;vertical-align:middle;">Theo dõi Tiến trình</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
+    <span id="pm-last-updated" style="font-size:11.5px;color:var(--text-muted);"></span>
+    <button id="pm-refresh-btn" onclick="fetchSnapshot()" class="btn btn-ghost btn-sm btn-icon" title="Refresh ngay">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </button>
+    <div id="pm-ring" class="pm-refresh-ring" title="Tự refresh sau...">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- Stat summary row -->
+<div class="pm-stat-row" id="pm-stats"></div>
+
+<!-- Main grid -->
+<div class="pm-grid">
+
+  <!-- ── Encode Queue ── -->
+  <div class="pm-card">
+    <div class="pm-card-header">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span class="pm-card-title">Encode Queue</span>
+      <span id="enc-badge" class="pm-badge pm-badge-idle">Idle</span>
+    </div>
+    <div class="pm-body" id="enc-body">
+      <div class="pm-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Không có video nào đang encode
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SFTP Transfers ── -->
+  <div class="pm-card">
+    <div class="pm-card-header">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 13 21 7 3 4 12 2 12"/></svg>
+      <span class="pm-card-title">SFTP Transfers</span>
+      <span id="sftp-badge" class="pm-badge pm-badge-idle">Idle</span>
+    </div>
+    <div class="pm-body" id="sftp-body">
+      <div class="pm-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 13 21 7 3 4 12 2 12"/></svg>
+        Không có SFTP transfer nào đang chạy
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Remote Workers ── -->
+  <div class="pm-card">
+    <div class="pm-card-header">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+      <span class="pm-card-title">Encode Workers</span>
+      <span id="workers-badge" class="pm-badge pm-badge-idle">—</span>
+    </div>
+    <div class="pm-body" id="workers-body">
+      <div class="pm-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>
+        Chưa cấu hình worker nào
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Recent Errors ── -->
+  <div class="pm-card">
+    <div class="pm-card-header">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span class="pm-card-title">Lỗi gần đây</span>
+      <a href="/admin/errors" class="pm-badge pm-badge-idle" style="text-decoration:none;">Xem tất cả →</a>
+    </div>
+    <div class="pm-body" id="errors-body">
+      <div class="pm-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/></svg>
+        Không có lỗi nào gần đây
+      </div>
+    </div>
+  </div>
+
+</div><!-- /pm-grid -->
+
+<!-- Active Videos full-width -->
+<div class="pm-card" style="margin-top:18px;">
+  <div class="pm-card-header">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+    <span class="pm-card-title">Tất cả Video đang xử lý</span>
+    <span id="active-badge" class="pm-badge pm-badge-idle">0 video</span>
+  </div>
+  <div id="active-body" class="pm-body">
+    <div class="pm-empty">Không có video nào đang xử lý</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var INTERVAL = 2500; // ms
+  var countdown = INTERVAL;
+  var timer = null;
+  var ringEl = document.getElementById('pm-ring');
+
+  function fmtTime(s) {
+    if (!s) return '—';
+    var d = new Date(s);
+    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function elapsed(ts) {
+    if (!ts) return '';
+    var sec = Math.floor((Date.now() - ts) / 1000);
+    if (sec < 60) return sec + 's trước';
+    if (sec < 3600) return Math.floor(sec/60) + 'm trước';
+    return Math.floor(sec/3600) + 'h trước';
+  }
+
+  // ── Render functions ───────────────────────────────────────────
+  function renderEncode(data) {
+    var badge = document.getElementById('enc-badge');
+    var body = document.getElementById('enc-body');
+    var html = '';
+
+    if (data.currentVideo) {
+      var cv = data.currentVideo;
+      var pct = cv.progress || 0;
+      badge.textContent = 'Encoding'; badge.className = 'pm-badge pm-badge-active';
+      html += '<div class="pm-job">';
+      html += '<div class="pm-job-title"><a href="/admin/videos/' + cv.id + '/edit">🎬 ' + esc(cv.title) + '</a></div>';
+      html += '<div class="pm-job-meta"><span class="tag">ID #' + cv.id + '</span><span class="tag">Local FFmpeg</span><span style="margin-left:auto;font-weight:700;color:var(--accent);">' + pct + '%</span></div>';
+      html += '<div class="pm-bar-wrap"><div class="pm-bar-fill pm-bar-encode" style="width:' + pct + '%"></div></div>';
+      html += '</div>';
+    } else {
+      badge.textContent = 'Idle'; badge.className = 'pm-badge pm-badge-idle';
+    }
+
+    if (data.queue && data.queue.pending && data.queue.pending.length > 0) {
+      html += '<div style="font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.5px;margin:12px 0 8px;">Hàng chờ (' + data.queue.pending.length + ')</div>';
+      data.queue.pending.forEach(function (job) {
+        html += '<div class="pm-job">';
+        html += '<div class="pm-job-title">⏳ Video #' + job.videoId + '</div>';
+        html += '<div class="pm-job-meta"><span class="tag">Vị trí ' + job.position + '</span></div>';
+        html += '<div class="pm-bar-wrap"><div class="pm-bar-fill pm-bar-queue" style="width:100%;opacity:.3;"></div></div>';
+        html += '</div>';
+      });
+    }
+
+    if (data.remoteJobs && data.remoteJobs.length > 0) {
+      html += '<div style="font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.5px;margin:12px 0 8px;">Remote Workers (' + data.remoteJobs.length + ')</div>';
+      data.remoteJobs.forEach(function (job) {
+        html += '<div class="pm-job">';
+        html += '<div class="pm-job-title">🖥️ ' + esc(job.title) + '</div>';
+        html += '<div class="pm-job-meta"><span class="tag">Worker: ' + esc(job.worker) + '</span><span class="tag">Dispatched</span></div>';
+        html += '<div class="pm-bar-wrap"><div class="pm-bar-fill pm-bar-encode" style="width:50%;animation:pulse-dot 2s infinite;"></div></div>';
+        html += '</div>';
+      });
+    }
+
+    body.innerHTML = html || '<div class="pm-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Không có video nào đang encode</div>';
+  }
+
+  function renderSFTP(data) {
+    var badge = document.getElementById('sftp-badge');
+    var body = document.getElementById('sftp-body');
+    var list = data.sftpList || [];
+
+    if (list.length === 0) {
+      badge.textContent = 'Idle'; badge.className = 'pm-badge pm-badge-idle';
+      body.innerHTML = '<div class="pm-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 13 21 7 3 4 12 2 12"/></svg>Không có SFTP transfer nào đang chạy</div>';
+      return;
+    }
+    badge.textContent = list.length + ' đang chạy'; badge.className = 'pm-badge pm-badge-sftp';
+    var html = '';
+    list.forEach(function (s) {
+      html += '<div class="pm-job">';
+      html += '<div class="pm-job-title">📡 ' + esc(s.title) + '</div>';
+      html += '<div class="pm-job-meta"><span class="tag">ID #' + s.videoId + '</span><span class="tag">' + s.done + '/' + s.total + ' files</span><span style="margin-left:auto;font-weight:700;color:#22d3ee;">' + s.pct + '%</span></div>';
+      html += '<div class="pm-bar-wrap"><div class="pm-bar-fill pm-bar-sftp" style="width:' + s.pct + '%"></div></div>';
+      if (s.file) html += '<div style="font-size:10.5px;color:var(--text-muted);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(s.file) + '</div>';
+      html += '</div>';
+    });
+    body.innerHTML = html;
+  }
+
+  function renderWorkers(data) {
+    var badge = document.getElementById('workers-badge');
+    var body = document.getElementById('workers-body');
+    var workers = data.workers || [];
+
+    if (workers.length === 0) {
+      badge.textContent = '—'; badge.className = 'pm-badge pm-badge-idle';
+      body.innerHTML = '<div class="pm-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>Chưa cấu hình worker nào</div>';
+      return;
+    }
+    var online = workers.filter(function(w) { return w.reachable; }).length;
+    badge.textContent = online + '/' + workers.length + ' online';
+    badge.className = online > 0 ? 'pm-badge pm-badge-active' : 'pm-badge pm-badge-error';
+    var html = '';
+    workers.forEach(function (w) {
+      var dotClass = !w.reachable ? 'offline' : (w.busy ? 'busy' : 'online');
+      var statusLabel = !w.reachable ? 'Offline' : (w.busy ? 'Đang encode' : 'Rảnh');
+      html += '<div class="pm-worker">';
+      html += '<div class="pm-worker-dot ' + dotClass + '"></div>';
+      html += '<div class="pm-worker-info"><div class="pm-worker-name">' + esc(w.label || '—') + '</div><div class="pm-worker-url">' + esc(w.url || '') + '</div></div>';
+      html += '<span class="pm-badge ' + (w.reachable ? (w.busy ? 'pm-badge-warn' : 'pm-badge-active') : 'pm-badge-error') + '">' + statusLabel + '</span>';
+      if (w.reachable && w.job) html += '<span class="pm-badge pm-badge-sftp" style="margin-left:4px;">Job #' + esc(w.job) + '</span>';
+      html += '</div>';
+    });
+    body.innerHTML = html;
+  }
+
+  function renderErrors(data) {
+    var body = document.getElementById('errors-body');
+    var errs = data.recentErrors || [];
+    if (errs.length === 0) {
+      body.innerHTML = '<div class="pm-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/></svg>Không có lỗi nào gần đây 🎉</div>';
+      return;
+    }
+    var html = '';
+    var typeMap = { encode:'err-encode', sftp:'err-sftp', r2:'err-r2', thumb:'err-thumb', unknown:'err-unknown' };
+    errs.forEach(function (e) {
+      var cls = typeMap[e.type] || 'err-unknown';
+      html += '<div class="pm-err">';
+      html += '<span class="pm-err-type ' + cls + '">' + esc(e.type) + '</span>';
+      html += '<div class="pm-err-main"><div class="pm-err-title">' + esc(e.video_title || 'Video #' + e.video_id) + '</div>';
+      html += '<div class="pm-err-msg">' + esc(e.message) + '</div></div>';
+      html += '<span class="pm-err-time">' + fmtTime(e.created_at) + '</span>';
+      html += '</div>';
+    });
+    body.innerHTML = html;
+  }
+
+  function renderActiveVideos(data) {
+    var badge = document.getElementById('active-badge');
+    var body = document.getElementById('active-body');
+    var vids = data.activeVideos || [];
+    badge.textContent = vids.length + ' video';
+    badge.className = vids.length > 0 ? 'pm-badge pm-badge-active' : 'pm-badge pm-badge-idle';
+    if (vids.length === 0) { body.innerHTML = '<div class="pm-empty">Không có video nào đang xử lý</div>'; return; }
+
+    var statusColor = { processing: '#fbbf24', uploading: '#22d3ee', queued: '#9ca3af' };
+    var statusLabel = { processing: 'Encoding', uploading: 'SFTP Upload', queued: 'Queued' };
+    var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">';
+    vids.forEach(function (v) {
+      var pct = v.progress || 0;
+      var col = statusColor[v.status] || '#9ca3af';
+      var lbl = statusLabel[v.status] || v.status;
+      html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">';
+      html += '<div style="display:flex;align-items:center;gap:7px;margin-bottom:7px;">';
+      html += '<span style="width:7px;height:7px;border-radius:50%;background:' + col + ';flex-shrink:0;box-shadow:0 0 5px ' + col + ';"></span>';
+      html += '<span style="font-size:13px;font-weight:600;color:var(--text-primary);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(v.title) + '</span>';
+      html += '<a href="/admin/videos/' + v.id + '/edit" style="font-size:10.5px;color:var(--accent);" title="Sửa">✏️</a>';
+      html += '</div>';
+      html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:6px;">';
+      html += '<span>#' + v.id + ' · ' + lbl + '</span><span style="color:' + col + ';font-weight:700;">' + pct + '%</span></div>';
+      html += '<div class="pm-bar-wrap"><div class="pm-bar-fill" style="width:' + pct + '%;background:' + col + ';border-radius:100px;height:100%;transition:width .5s;"></div></div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    body.innerHTML = html;
+  }
+
+  function renderStats(data) {
+    var enc = data.currentVideo ? 1 : 0;
+    var sftp = (data.sftpList || []).length;
+    var remote = (data.remoteJobs || []).length;
+    var pending = (data.queue && data.queue.pending) ? data.queue.pending.length : 0;
+    var total = enc + sftp + remote + pending;
+    document.getElementById('pm-stats').innerHTML =
+      '<div class="pm-stat"><div class="pm-stat-val">' + total + '</div><div class="pm-stat-lbl">Tổng jobs</div></div>' +
+      '<div class="pm-stat"><div class="pm-stat-val">' + enc + '</div><div class="pm-stat-lbl">Encoding</div></div>' +
+      '<div class="pm-stat"><div class="pm-stat-val">' + pending + '</div><div class="pm-stat-lbl">Chờ encode</div></div>' +
+      '<div class="pm-stat"><div class="pm-stat-val">' + sftp + '</div><div class="pm-stat-lbl">SFTP upload</div></div>' +
+      '<div class="pm-stat"><div class="pm-stat-val">' + remote + '</div><div class="pm-stat-lbl">Remote jobs</div></div>' +
+      '<div class="pm-stat"><div class="pm-stat-val">' + (data.activeVideos || []).length + '</div><div class="pm-stat-lbl">Active videos</div></div>';
+  }
+
+  // ── Ring countdown ─────────────────────────────────────────────
+  function tickRing() {
+    countdown -= 100;
+    if (countdown <= 0) { countdown = INTERVAL; fetchSnapshot(); }
+    var pct = (1 - countdown / INTERVAL) * 100;
+    if (ringEl) ringEl.style.background = 'conic-gradient(var(--accent) ' + pct + '%, rgba(139,92,246,0.15) 0%)';
+  }
+
+  // ── Fetch & render ─────────────────────────────────────────────
+  window.fetchSnapshot = function () {
+    countdown = INTERVAL;
+    var btn = document.getElementById('pm-refresh-btn');
+    if (btn) { btn.style.animation = 'spin .5s linear'; setTimeout(function() { btn.style.animation = ''; }, 500); }
+    fetch('/admin/api/processes/snapshot')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        renderStats(data);
+        renderEncode(data);
+        renderSFTP(data);
+        renderWorkers(data);
+        renderErrors(data);
+        renderActiveVideos(data);
+        var lu = document.getElementById('pm-last-updated');
+        if (lu) lu.textContent = 'Cập nhật: ' + new Date().toLocaleTimeString('vi-VN');
+      })
+      .catch(function (e) { console.error('[ProcessMonitor]', e); });
+  };
+
+  // ── Init ───────────────────────────────────────────────────────
+  fetchSnapshot();
+  setInterval(tickRing, 100);
+})();
+</script>
+
+<%- include('../partials/footer') %>

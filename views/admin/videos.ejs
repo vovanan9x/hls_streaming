@@ -1,285 +1,511 @@
 <%- include('../partials/header') %>
 
-    <% var toastMsg='' ; var toastType='success' ; if (typeof msg !=='undefined' && msg==='requested' ) {
-        toastMsg='Da gui yeu cau xoa. Vui long cho admin duyet.' ; } else if (typeof msg !=='undefined' &&
-        msg==='already_pending' ) { toastMsg='Video nay da co yeu cau xoa dang cho duyet.' ; toastType='warn' ; } else
-        if (typeof msg !=='undefined' && msg==='notfound' ) { toastMsg='Khong tim thay video.' ; toastType='error' ; }
-        %>
+<%
+  var toastMsg = '';
+  var toastType = 'success';
+  if (typeof msg !== 'undefined' && msg === 'requested')       { toastMsg = 'Đã gửi yêu cầu xoá. Vui lòng chờ admin duyệt.'; }
+  else if (typeof msg !== 'undefined' && msg === 'already_pending') { toastMsg = 'Video này đã có yêu cầu xoá đang chờ duyệt.'; toastType = 'warn'; }
+  else if (typeof msg !== 'undefined' && msg === 'notfound')  { toastMsg = 'Không tìm thấy video.'; toastType = 'error'; }
+%>
 
-        <% if (toastMsg) { %>
-            <div class="toast toast-<%= toastType %>" id="page-toast"
-                style="position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;max-width:380px;box-shadow:0 4px 20px rgba(0,0,0,0.3);transition:opacity 0.4s;background:<%= toastType==='success'?'rgba(52,211,153,0.15)':toastType==='warn'?'rgba(234,179,8,0.15)':'rgba(239,68,68,0.15)' %>;border:1px solid <%= toastType==='success'?'rgba(52,211,153,0.3)':toastType==='warn'?'rgba(234,179,8,0.3)':'rgba(239,68,68,0.3)' %>;color:<%= toastType==='success'?'#34d399':toastType==='warn'?'#fbbf24':'#f87171' %>;">
-                <% if (toastType==='success' ) { %>&#x2705;<% } else if (toastType==='warn' ) { %>&#x26A0;&#xFE0F;<% }
-                            else { %>&#x274C;<% } %>
-                                <%= toastMsg %>
-            </div>
+<!-- Page toast via JS after DOM ready -->
+<% if (toastMsg) { %>
+<script>window.__pageToast = { msg: <%- JSON.stringify(toastMsg) %>, type: '<%- toastType %>' };</script>
+<% } %>
+
+<!-- Inline overrides to guarantee table text visibility -->
+<style>
+  .videos-table tbody td { color: #f0f0fa !important; font-size: 13px; }
+  .videos-table .td-title { font-weight: 600 !important; }
+  .videos-table .col-secondary { color: #9090b0 !important; font-size: 12.5px; }
+  .videos-table .col-muted { color: #70708a !important; font-size: 12px; }
+</style>
+
+<!-- Card -->
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/>
+      </svg>
+      Danh sách Video <span style="color:var(--text-muted);font-weight:400;font-size:13px;">(<%= videos.length %>)</span>
+    </div>
+    <div class="btn-group">
+      <% if (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'administrator') { %>
+        <!-- Bulk action toolbar (admin only) -->
+        <button id="bulk-stop-btn" class="btn btn-sm" style="display:none;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#f87171;" onclick="bulkStop()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
+            <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+          Stop (<span id="bulk-count-stop">0</span>)
+        </button>
+        <button id="bulk-retry-btn" class="btn btn-sm" style="display:none;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);color:#a78bfa;" onclick="bulkRetry()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
+            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          Retry (<span id="bulk-count-retry">0</span>)
+        </button>
+        <button id="bulk-delete-btn" class="btn btn-outline-danger btn-sm" style="display:none;" onclick="bulkDelete()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+          </svg>
+          Xoá (<span id="bulk-count">0</span>)
+        </button>
+      <% } %>
+      <a href="/admin/upload" class="btn btn-primary btn-sm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        Upload mới
+      </a>
+    </div>
+  </div>
+
+  <!-- Search / Filter toolbar -->
+  <div class="toolbar" style="margin-bottom:16px;">
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" class="search-input" id="video-search" placeholder="Tìm theo tiêu đề hoặc ID...">
+    </div>
+    <select class="form-select" id="status-filter" style="width:auto;flex:none;">
+      <option value="">Tất cả trạng thái</option>
+      <option value="ready">Ready</option>
+      <option value="processing">Processing</option>
+      <option value="uploading">Uploading</option>
+      <option value="queued">Queued</option>
+      <option value="error">Lỗi</option>
+    </select>
+  </div>
+
+  <% if (videos.length === 0) { %>
+    <div class="empty-state">
+      <div class="empty-state-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/>
+        </svg>
+      </div>
+      <div class="empty-state-text">Chưa có video nào</div>
+      <div class="empty-state-hint">Bắt đầu bằng cách upload video đầu tiên</div>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table id="videos-table" class="videos-table">
+        <thead>
+          <tr>
+            <% if (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'administrator') { %>
+            <th style="width:36px;"><input type="checkbox" id="select-all" title="Chọn tất cả" style="accent-color:var(--accent);cursor:pointer;"></th>
             <% } %>
-
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">Danh s&#xE1;ch Video (<%= videos.length %>)</span>
-                        <a href="/admin/upload" class="btn btn-primary">&#x1F4E4; Upload m&#x1EDB;i</a>
-                    </div>
-
-                    <% if (videos.length===0) { %>
-                        <div class="empty-state">
-                            <div class="empty-state-icon">&#x1F39E;&#xFE0F;</div>
-                            <div class="empty-state-text">Ch&#x01B0;a c&#xF3; video n&#xE0;o</div>
-                            <div class="empty-state-hint">B&#x1EAF;t &#x111;&#x1EA7;u b&#x1EB1;ng c&#xE1;ch upload video
-                                &#x111;&#x1EA7;u ti&#xEA;n</div>
-                        </div>
-                        <% } else { %>
-                            <div class="table-wrap">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Thumb</th>
-                                            <th>Ti&#xEA;u &#x111;&#x1EC1;</th>
-                                            <th>Uploader</th>
-                                            <th>Server</th>
-                                            <th>Tr&#x1EA1;ng th&#xE1;i</th>
-                                            <th>&#x1F441;&#xFE0F; &#x110;ang xem</th>
-                                            <th>Ng&#xE0;y t&#x1EA1;o</th>
-                                            <th>H&#xE0;nh &#x111;&#x1ED9;ng</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <% videos.forEach(function(v) { var isPending=pendingVideoIds.indexOf(v.id)
-                                            !==-1; var
-                                            isProcessing=['queued','processing','uploading'].includes(v.status); var
-                                            isAdmin=typeof currentUser !=='undefined' && currentUser &&
-                                            currentUser.role==='administrator' ; var isUploader=typeof currentUser
-                                            !=='undefined' && currentUser && currentUser.role==='uploader' ; %>
-                                            <tr>
-                                                <td class="td-thumb">
-                                                    <% if (v.thumbnail) { %>
-                                                        <img src="/uploads/thumbnails/<%= v.thumbnail %>" alt="thumb">
-                                                        <% } else { %>
-                                                            <div
-                                                                style="width:72px;height:42px;background:var(--bg-input);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;">
-                                                                &#x1F3AC;</div>
-                                                            <% } %>
-                                                </td>
-                                                <td class="td-title">
-                                                    <%= v.title %>
-                                                        <small>ID: <%= v.id %> &middot; Sort: <%= v.sort_order %>
-                                                                    </small>
-                                                        <% if (v.qualities) { try { var qs=JSON.parse(v.qualities); }
-                                                            catch(e) { var qs=[]; } %>
-                                                            <% qs.forEach(function(q) { %><span
-                                                                    style="display:inline-block;font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(139,92,246,0.15);color:var(--accent);margin:2px 1px;font-weight:600">
-                                                                    <%= q %>
-                                                                </span>
-                                                                <% }); %>
-                                                                    <% } %>
-                                                </td>
-                                                <td style="color:var(--text-secondary);font-size:13px;">
-                                                    <%= v.uploader_name || '&mdash;' %>
-                                                </td>
-                                                <td>
-                                                    <% if (v.server_label) { %>
-                                                        <span style="color:var(--text-secondary)">
-                                                            <%= v.server_label %>
-                                                        </span>
-                                                        <% } else { %>
-                                                            <span style="color:var(--text-muted)">Local</span>
-                                                            <% } %>
-                                                </td>
-                                                <td>
-                                                    <% if (v.status==='ready' ) { %>
-                                                        <span class="badge badge-ready"
-                                                            id="status-<%= v.id %>">READY</span>
-                                                        <% } else if (v.status==='processing' ) { %>
-                                                            <span class="badge badge-processing"
-                                                                id="status-<%= v.id %>">PROCESSING (<%= v.progress || 0
-                                                                    %>%)</span>
-                                                            <% } else if (v.status==='uploading' ) { %>
-                                                                <span class="badge badge-processing"
-                                                                    id="status-<%= v.id %>"
-                                                                    style="background:rgba(59,130,246,0.15);color:#60a5fa;">&#x2B06;&#xFE0F;
-                                                                    UPLOADING...</span>
-                                                                <% } else if (v.status==='error' ) { %>
-                                                                    <span class="badge badge-error"
-                                                                        id="status-<%= v.id %>">L&#x1ED6;I</span>
-                                                                    <% } else if (v.status==='queued' ) { %>
-                                                                        <span class="badge" id="status-<%= v.id %>"
-                                                                            style="background:rgba(234,179,8,0.15);color:#fbbf24;">&#x23F3;
-                                                                            QUEUE</span>
-                                                                        <% } %>
-                                                </td>
-                                                <td id="viewers-<%= v.id %>"
-                                                    style="text-align:center;font-size:13px;color:var(--text-muted);">
-                                                    <span style="display:inline-flex;align-items:center;gap:4px;">
-                                                        <span style="font-size:16px;">&#x1F441;&#xFE0F;</span>
-                                                        <span class="viewer-count">0</span>
-                                                    </span>
-                                                </td>
-                                                <td style="color:var(--text-muted);font-size:13px;white-space:nowrap">
-                                                    <%= v.created_at %>
-                                                </td>
-                                                <td>
-                                                    <div class="btn-group">
-                                                        <% if (isProcessing) { %>
-                                                            <button type="button" class="btn btn-danger btn-sm"
-                                                                onclick="cancelVideo(<%= v.id %>)"
-                                                                id="cancel-btn-<%= v.id %>">&#x26D4; H&#x1EE7;y</button>
-                                                            <% } else if (isAdmin) { %>
-                                                                <form action="/admin/videos/<%= v.id %>/push-top"
-                                                                    method="POST" style="margin:0;">
-                                                                    <button type="submit" class="btn btn-ghost btn-sm"
-                                                                        title="Day len dau">&#x2B06;&#xFE0F;</button>
-                                                                </form>
-                                                                <a href="/admin/videos/<%= v.id %>/edit"
-                                                                    class="btn btn-ghost btn-sm"
-                                                                    title="Sua">&#x270F;&#xFE0F;</a>
-                                                                <form action="/admin/videos/<%= v.id %>/delete"
-                                                                    method="POST" class="delete-form"
-                                                                    data-name="<%= v.title %>" style="margin:0;">
-                                                                    <button type="submit" class="btn btn-danger btn-sm"
-                                                                        title="Xoa">&#x1F5D1;&#xFE0F;</button>
-                                                                </form>
-                                                                <% } else if (isUploader) { %>
-                                                                    <% if (isPending) { %>
-                                                                        <button type="button" class="btn btn-sm"
-                                                                            disabled
-                                                                            style="opacity:0.6;cursor:not-allowed;background:rgba(234,179,8,0.1);color:#fbbf24;border:1px solid rgba(234,179,8,0.3);">
-                                                                            &#x23F3; Ch&#x1EDD; duy&#x1EC7;t
-                                                                        </button>
-                                                                        <% } else { %>
-                                                                            <button type="button"
-                                                                                class="btn btn-danger btn-sm"
-                                                                                onclick="openDeleteRequest(<%= v.id %>, this.dataset.title)"
-                                                                                data-title="<%= v.title %>">
-                                                                                &#x1F5D1;&#xFE0F; Y&#xEA;u c&#x1EA7;u
-                                                                                Xo&#xE1;
-                                                                            </button>
-                                                                            <% } %>
-                                                                                <% } %>
-                                                                                    <% if (v.m3u8_url) { %>
-                                                                                        <button
-                                                                                            class="btn btn-ghost btn-sm copy-btn"
-                                                                                            data-url="<%= v.m3u8_url %>"
-                                                                                            title="Copy m3u8">&#x1F4CB;</button>
-                                                                                        <% } %>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                            <% }); %>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <% } %>
+            <th>Thumb</th>
+            <th>Tiêu đề</th>
+            <th>Uploader</th>
+            <th>Server</th>
+            <th>Trạng thái</th>
+            <th style="text-align:center;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:middle;">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+            </th>
+            <th>Ngày tạo</th>
+            <th>Hành động</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% videos.forEach(function(v) {
+            var isPending    = pendingVideoIds.indexOf(v.id) !== -1;
+            var isProcessing = ['queued','processing','uploading'].includes(v.status);
+            var isAdmin   = typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'administrator';
+            var isUploader = typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'uploader';
+            var qs = [];
+            if (v.qualities) { try { qs = JSON.parse(v.qualities); } catch(e) {} }
+          %>
+          <tr data-title="<%= v.title.toLowerCase() %>" data-status="<%= v.status %>">
+            <% if (isAdmin) { %>
+            <td>
+              <input type="checkbox" class="row-check" data-id="<%= v.id %>" style="accent-color:var(--accent);cursor:pointer;">
+            </td>
+            <% } %>
+            <td class="td-thumb">
+              <% if (v.thumbnail) { %>
+                <img src="/uploads/thumbnails/<%= v.thumbnail %>" alt="thumb" loading="lazy">
+              <% } else { %>
+                <div class="td-thumb-placeholder">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+                  </svg>
                 </div>
-
-                <!-- Modal yeu cau xoa -->
-                <div id="dr-modal"
-                    style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
-                    <div
-                        style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px 32px;width:420px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-                        <h3 style="margin:0 0 6px;font-size:17px;">&#x1F5D1;&#xFE0F; Y&#xEA;u c&#x1EA7;u Xo&#xE1; Video
-                        </h3>
-                        <p id="dr-modal-name" style="color:var(--text-secondary);font-size:13px;margin:0 0 16px;"></p>
-                        <form id="dr-modal-form" method="POST" action="">
-                            <label
-                                style="display:block;font-size:13px;margin-bottom:6px;color:var(--text-secondary);">L&#xFD;
-                                do xo&#xE1; <span style="color:var(--text-muted)">(tu&#x1EF3;
-                                    ch&#x1ECD;n)</span></label>
-                            <textarea name="reason" id="dr-modal-reason"
-                                style="width:100%;box-sizing:border-box;min-height:80px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:10px 12px;font-family:inherit;font-size:14px;resize:vertical;"
-                                placeholder="Nhap ly do muon xoa video nay..."></textarea>
-                            <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;">
-                                <button type="button" class="btn btn-ghost" onclick="closeDrModal()">Hu&#x1EF7;</button>
-                                <button type="submit" class="btn btn-danger">&#x1F5D1;&#xFE0F; G&#x1EED;i y&#xEA;u
-                                    c&#x1EA7;u</button>
-                            </div>
-                        </form>
-                    </div>
+              <% } %>
+            </td>
+            <td class="td-title">
+              <%= v.title %>
+              <small>
+                ID: <%= v.id %>
+                <% if (v.sort_order != null) { %> · Sort: <%= v.sort_order %><% } %>
+                <% if (v.idah) { %> · IDAH: <strong style="color:var(--accent);"><%= v.idah %></strong><% } %>
+              </small>
+              <div style="margin-top:4px;">
+                <% qs.forEach(function(q) { %>
+                  <span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(139,92,246,0.12);color:var(--accent);margin:1px;font-weight:700;"><%= q %></span>
+                <% }); %>
+              </div>
+            </td>
+            <td class="col-secondary"><%= v.uploader_name || '—' %></td>
+            <td class="col-secondary">
+              <%= v.server_label || '<span style="color:var(--text-muted)">Local</span>' %>
+            </td>
+            <td>
+              <% if (v.status === 'ready') { %>
+                <span class="badge badge-ready" id="status-<%= v.id %>"><span class="badge-dot"></span>Ready</span>
+              <% } else if (v.status === 'processing') { %>
+                <span class="badge badge-processing" id="status-<%= v.id %>"><span class="badge-dot"></span>Processing (<%= v.progress || 0 %>%)</span>
+              <% } else if (v.status === 'uploading') { %>
+                <div id="status-<%= v.id %>" data-sftp-id="<%= v.id %>">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                    <span class="badge badge-upload" style="flex-shrink:0;"><span class="badge-dot" style="background:#22d3ee;animation:pulse-dot 1s infinite;"></span>SFTP</span>
+                    <span id="sftp-count-<%= v.id %>" style="font-size:11px;color:#22d3ee;font-weight:600;">đang kết nối...</span>
+                  </div>
+                  <div style="background:rgba(255,255,255,0.08);border-radius:4px;height:4px;width:100%;overflow:hidden;">
+                    <div id="sftp-bar-<%= v.id %>" style="height:100%;width:0%;background:linear-gradient(90deg,#22d3ee,#0ea5e9);border-radius:4px;transition:width 0.5s ease;"></div>
+                  </div>
+                  <div id="sftp-file-<%= v.id %>" style="font-size:10px;color:var(--text-muted);margin-top:3px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
                 </div>
+              <% } else if (v.status === 'error') { %>
+                <span class="badge badge-error" id="status-<%= v.id %>"><span class="badge-dot"></span>Lỗi</span>
+              <% } else if (v.status === 'queued') { %>
+                <span class="badge badge-queue" id="status-<%= v.id %>"><span class="badge-dot"></span>Queue</span>
+              <% } %>
+            </td>
 
-                <script>
-                    (function () {
-                        // Toast auto-hide
-                        var toast = document.getElementById('page-toast');
-                        if (toast) { setTimeout(function () { toast.style.opacity = '0'; setTimeout(function () { if (toast.parentNode) toast.remove(); }, 400); }, 4500); }
+            <td id="viewers-<%= v.id %>" style="text-align:center;font-size:13px;color:var(--text-muted);">
+              <span class="viewer-count">0</span>
+            </td>
+            <td style="color:var(--text-muted);font-size:12px;white-space:nowrap"><%= v.created_at %></td>
+            <td>
+              <div class="btn-group">
+                <% if (isProcessing) { %>
+                  <form action="/admin/videos/<%= v.id %>/cancel" method="POST" style="margin:0;" class="cancel-form">
+                    <button type="submit" class="btn btn-danger btn-sm btn-icon" id="cancel-btn-<%= v.id %>" title="Hủy xử lý">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    </button>
+                  </form>
+                <% } else if (isAdmin) { %>
+                  <form action="/admin/videos/<%= v.id %>/push-top" method="POST" style="margin:0;">
+                    <button type="submit" class="btn btn-ghost btn-sm btn-icon" title="Đưa lên đầu">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
+                    </button>
+                  </form>
+                  <a href="/admin/videos/<%= v.id %>/edit" class="btn btn-ghost btn-sm btn-icon" title="Sửa">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </a>
+                  <form action="/admin/videos/<%= v.id %>/delete" method="POST" class="delete-form" data-name="<%= v.title %>" style="margin:0;">
+                    <button type="submit" class="btn btn-ghost btn-sm btn-icon" title="Xoá" style="color:var(--danger);">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                    </button>
+                  </form>
+                <% } else if (isUploader) { %>
+                  <% if (isPending) { %>
+                    <button type="button" class="btn btn-sm" disabled style="opacity:.5;cursor:not-allowed;background:var(--warning-bg);color:var(--warning);border:1px solid var(--warning-bdr);">⏳ Chờ duyệt</button>
+                  <% } else { %>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="openDeleteRequest(<%= v.id %>, this.dataset.title)" data-title="<%= v.title %>">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                      Yêu cầu Xoá
+                    </button>
+                  <% } %>
+                <% } %>
 
-                        // Admin: confirm before delete
-                        document.querySelectorAll('.delete-form').forEach(function (f) {
-                            f.addEventListener('submit', function (e) {
-                                if (!confirm('Ban co chac xoa video: ' + this.dataset.name + '?')) e.preventDefault();
-                            });
-                        });
+                <% if (v.m3u8_url) { %>
+                  <button class="btn btn-ghost btn-sm btn-icon copy-btn" data-url="<%= v.m3u8_url %>" title="Copy link m3u8">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                <% } %>
 
-                        // Uploader: open delete request modal
-                        window.openDeleteRequest = function (id, name) {
-                            document.getElementById('dr-modal-name').textContent = String.fromCodePoint(0x1F4F9) + ' ' + name;
-                            document.getElementById('dr-modal-form').action = '/admin/videos/' + id + '/delete-request';
-                            document.getElementById('dr-modal-reason').value = '';
-                            var m = document.getElementById('dr-modal');
-                            m.style.display = 'flex';
-                            setTimeout(function () { document.getElementById('dr-modal-reason').focus(); }, 50);
-                        };
-                        window.closeDrModal = function () { document.getElementById('dr-modal').style.display = 'none'; };
-                        document.getElementById('dr-modal').addEventListener('click', function (e) { if (e.target === this) closeDrModal(); });
+                <% if (v.status === 'error') { %>
+                  <% if (isAdmin) { %>
+                    <button class="btn btn-ghost btn-sm btn-icon retry-btn" data-id="<%= v.id %>" data-source="<%= v.source || 'remote' %>" title="Thử lại">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    </button>
+                  <% } %>
+                <% } %>
+              </div>
+            </td>
+          </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
 
-                        // Cancel video (AJAX)
-                        window.cancelVideo = function (id) {
-                            if (!confirm('Huy bo tien trinh va xoa video nay? Thao tac khong the hoan tac.')) return;
-                            var btn = document.getElementById('cancel-btn-' + id);
-                            if (btn) { btn.disabled = true; btn.textContent = '...'; }
-                            fetch('/admin/api/videos/' + id + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
-                                .then(function (r) { return r.json(); })
-                                .then(function (data) {
-                                    if (data.ok) {
-                                        var row = btn ? btn.closest('tr') : null;
-                                        if (row) { row.style.opacity = '0'; row.style.transition = 'opacity 0.3s'; setTimeout(function () { row.remove(); }, 300); }
-                                    } else {
-                                        alert('Loi: ' + (data.message || 'Khong the huy.'));
-                                        if (btn) { btn.disabled = false; btn.textContent = String.fromCodePoint(0x26D4) + ' Huy'; }
-                                    }
-                                }).catch(function (e) { alert('Loi ket noi.'); if (btn) { btn.disabled = false; } });
-                        };
+    <!-- Pagination -->
+    <% var paginationBase = '/admin/videos'; %>
+    <%- include('../partials/pagination') %>
 
-                        // Progress polling
-                        var progressTimer = null;
-                        function hasProcessing() { return document.querySelector('.badge-processing') !== null; }
-                        function pollProgress() {
-                            fetch('/admin/api/videos/progress').then(function (r) { return r.json(); }).then(function (vids) {
-                                if (!vids || vids.length === 0) { clearInterval(progressTimer); location.reload(); return; }
-                                vids.forEach(function (v) {
-                                    var el = document.getElementById('status-' + v.id); if (!el) return;
-                                    el.textContent = v.status === 'uploading' ? String.fromCodePoint(0x2B06, 0xFE0F) + ' UPLOADING...' : 'PROCESSING (' + Math.min(v.progress || 0, 100) + '%)';
-                                });
-                            }).catch(function () { });
-                        }
-                        if (hasProcessing()) { progressTimer = setInterval(pollProgress, 2000); }
+  <% } %>
+</div>
 
-                        // Viewer count polling
-                        function pollViewers() {
-                            fetch('/admin/api/viewers').then(function (r) { return r.json(); }).then(function (counts) {
-                                document.querySelectorAll('[id^="viewers-"]').forEach(function (cell) {
-                                    cell.querySelector('.viewer-count').textContent = '0';
-                                    cell.style.color = 'var(--text-muted)'; cell.style.opacity = '0.5';
-                                });
-                                Object.keys(counts).forEach(function (videoId) {
-                                    var count = counts[videoId]; var cell = document.getElementById('viewers-' + videoId);
-                                    if (cell && count > 0) { cell.querySelector('.viewer-count').textContent = count; cell.style.color = '#34d399'; cell.style.opacity = '1'; cell.style.fontWeight = '600'; }
-                                });
-                            }).catch(function () { });
-                        }
-                        pollViewers();
-                        setInterval(pollViewers, 5000);
+<!-- Delete request modal -->
+<div class="modal-backdrop" id="dr-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        Yêu cầu Xoá Video
+      </div>
+      <button class="modal-close" onclick="closeDrModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="dr-modal-name" style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;"></div>
+    <form id="dr-modal-form" method="POST" action="">
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Lý do xoá <span style="color:var(--text-muted);font-weight:400;">(tuỳ chọn)</span></label>
+        <textarea name="reason" id="dr-modal-reason" class="form-textarea" style="min-height:80px;" placeholder="Nhập lý do muốn xoá video này..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeDrModal()">Huỷ</button>
+        <button type="submit" class="btn btn-danger">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          Gửi yêu cầu
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 
-                        // Copy m3u8
-                        document.querySelectorAll('.copy-btn').forEach(function (btn) {
-                            btn.addEventListener('click', function () {
-                                var url = btn.getAttribute('data-url');
-                                navigator.clipboard.writeText(url).then(function () {
-                                    btn.textContent = String.fromCodePoint(0x2705);
-                                    setTimeout(function () { btn.textContent = String.fromCodePoint(0x1F4CB); }, 1500);
-                                });
-                            });
-                        });
-                    })();
-                </script>
+<script>
+(function () {
+  // Page toast
+  if (window.__pageToast) {
+    var t = window.__pageToast;
+    showToast(t.type, t.msg);
+  }
 
-                <%- include('../partials/footer') %>
+  // Delete confirm
+  document.querySelectorAll('.delete-form').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (!confirm('Bạn có chắc muốn xoá video: ' + this.dataset.name + '?')) e.preventDefault();
+    });
+  });
+
+  // Delete request modal
+  window.openDeleteRequest = function (id, name) {
+    document.getElementById('dr-modal-name').textContent = '🎬 ' + name;
+    document.getElementById('dr-modal-form').action = '/admin/videos/' + id + '/delete-request';
+    document.getElementById('dr-modal-reason').value = '';
+    document.getElementById('dr-modal').classList.add('open');
+    setTimeout(function () { document.getElementById('dr-modal-reason').focus(); }, 50);
+  };
+  window.closeDrModal = function () { document.getElementById('dr-modal').classList.remove('open'); };
+  document.getElementById('dr-modal').addEventListener('click', function (e) { if (e.target === this) closeDrModal(); });
+
+  // Cancel form inline confirm
+  document.querySelectorAll('.cancel-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = form.querySelector('button[type="submit"]');
+      if (btn.dataset.confirmed === 'yes') { form.submit(); return; }
+      var origHTML = btn.innerHTML;
+      btn.textContent = 'Xác nhận?';
+      btn.dataset.confirmed = 'yes';
+      var noBtn = document.createElement('button');
+      noBtn.type = 'button'; noBtn.className = 'btn btn-ghost btn-sm'; noBtn.textContent = '✗'; noBtn.style.marginLeft = '4px';
+      form.appendChild(noBtn);
+      noBtn.onclick = function () {
+        btn.innerHTML = origHTML; delete btn.dataset.confirmed; noBtn.remove();
+      };
+    });
+  });
+
+  // Progress polling
+  function hasProcessing() { return document.querySelector('.badge-processing, [data-sftp-id]') !== null; }
+  function pollProgress() {
+    fetch('/admin/api/videos/progress').then(function (r) { return r.json(); }).then(function (vids) {
+      if (!vids || vids.length === 0) { clearInterval(progressTimer); location.reload(); return; }
+      vids.forEach(function (v) {
+        var el = document.getElementById('status-' + v.id); if (!el) return;
+        if (v.status === 'uploading') {
+          // Ensure the SFTP UI is present (it may have been replaced by pollProgress)
+          if (!el.dataset.sftpId) {
+            el.dataset.sftpId = v.id;
+            el.innerHTML =
+              '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
+                '<span class="badge badge-upload" style="flex-shrink:0;"><span class="badge-dot" style="background:#22d3ee;animation:pulse-dot 1s infinite;"></span>SFTP</span>' +
+                '<span id="sftp-count-' + v.id + '" style="font-size:11px;color:#22d3ee;font-weight:600;">đang kết nối...</span>' +
+              '</div>' +
+              '<div style="background:rgba(255,255,255,0.08);border-radius:4px;height:4px;width:100%;overflow:hidden;">' +
+                '<div id="sftp-bar-' + v.id + '" style="height:100%;width:0%;background:linear-gradient(90deg,#22d3ee,#0ea5e9);border-radius:4px;transition:width 0.5s ease;"></div>' +
+              '</div>' +
+              '<div id="sftp-file-' + v.id + '" style="font-size:10px;color:var(--text-muted);margin-top:3px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>';
+          }
+          // Fetch SFTP file-count progress
+          fetch('/admin/api/sftp-progress/' + v.id).then(function (r) { return r.json(); }).then(function (sp) {
+            var bar = document.getElementById('sftp-bar-' + v.id);
+            var count = document.getElementById('sftp-count-' + v.id);
+            var fileEl = document.getElementById('sftp-file-' + v.id);
+            if (!bar || !count) return;
+            if (sp.uploading && sp.total > 0) {
+              var pct = Math.round((sp.done / sp.total) * 100);
+              bar.style.width = pct + '%';
+              count.textContent = sp.done + '/' + sp.total + ' files (' + pct + '%)';
+              if (fileEl) fileEl.textContent = sp.file;
+            } else if (sp.uploading && sp.total === 0) {
+              bar.style.width = '2%';
+              count.textContent = 'đang kết nối...';
+            } else {
+              // SFTP done but DB not yet updated
+              bar.style.width = '100%';
+              count.textContent = 'Hoàn thành, đang cập nhật...';
+            }
+          }).catch(function () {});
+        } else if (v.status === 'processing') {
+          el.innerHTML = '<span class="badge-dot"></span>Processing (' + Math.min(v.progress || 0, 100) + '%)';
+          el.className = 'badge badge-processing';
+        } else {
+          // Transitioned to ready/error — reload page
+          clearInterval(progressTimer);
+          location.reload();
+        }
+      });
+    }).catch(function () {});
+  }
+  var progressTimer = null;
+  if (hasProcessing()) { progressTimer = setInterval(pollProgress, 2000); }
+
+
+  // Viewer count polling
+  function pollViewers() {
+    fetch('/admin/api/viewers').then(function (r) { return r.json(); }).then(function (counts) {
+      document.querySelectorAll('[id^="viewers-"]').forEach(function (cell) {
+        cell.querySelector('.viewer-count').textContent = '0';
+        cell.style.color = 'var(--text-muted)';
+      });
+      Object.keys(counts).forEach(function (videoId) {
+        var count = counts[videoId];
+        var cell = document.getElementById('viewers-' + videoId);
+        if (cell && count > 0) {
+          cell.querySelector('.viewer-count').textContent = count;
+          cell.style.color = 'var(--success)';
+          cell.style.fontWeight = '600';
+        }
+      });
+    }).catch(function () {});
+  }
+  pollViewers();
+  setInterval(pollViewers, 5000);
+
+  // Copy m3u8
+  document.querySelectorAll('.copy-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(btn.getAttribute('data-url')).then(function () {
+        var orig = btn.innerHTML;
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;color:var(--success)"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(function () { btn.innerHTML = orig; }, 1800);
+      });
+    });
+  });
+
+  // Retry
+  document.querySelectorAll('.retry-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.dataset.id;
+      btn.disabled = true;
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;animation:spin 1s linear infinite;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
+      fetch('/admin/api/videos/' + id + '/retry', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.ok) { showToast('success', 'Đã thêm vào hàng đợi retry!'); setTimeout(function() { location.reload(); }, 1500); }
+          else { showToast('error', d.error || 'Thất bại'); btn.disabled = false; }
+        })
+        .catch(function () { showToast('error', 'Lỗi kết nối'); btn.disabled = false; });
+    });
+  });
+
+  // Search + filter
+  var searchInput = document.getElementById('video-search');
+  var statusFilter = document.getElementById('status-filter');
+  function filterTable() {
+    var q = searchInput ? searchInput.value.toLowerCase() : '';
+    var s = statusFilter ? statusFilter.value : '';
+    document.querySelectorAll('#videos-table tbody tr').forEach(function (row) {
+      var titleMatch = !q || (row.dataset.title && row.dataset.title.includes(q));
+      var idMatch    = !q || (row.innerHTML.toLowerCase().includes(q));
+      var statMatch  = !s || row.dataset.status === s;
+      row.style.display = (titleMatch || idMatch) && statMatch ? '' : 'none';
+    });
+  }
+  if (searchInput) searchInput.addEventListener('input', filterTable);
+  if (statusFilter) statusFilter.addEventListener('change', filterTable);
+
+  // Bulk select (admin only)
+  var selectAll = document.getElementById('select-all');
+  var bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+  var bulkStopBtn   = document.getElementById('bulk-stop-btn');
+  var bulkRetryBtn  = document.getElementById('bulk-retry-btn');
+
+  function updateBulk() {
+    var checked = Array.from(document.querySelectorAll('.row-check:checked'));
+    var count = checked.length;
+    // Stop: for processing/queued/uploading
+    var stopIds = checked.filter(function(cb) {
+      var row = cb.closest('tr');
+      var s = row ? row.dataset.status : '';
+      return s === 'processing' || s === 'queued' || s === 'uploading';
+    });
+    // Retry: for error
+    var retryIds = checked.filter(function(cb) {
+      var row = cb.closest('tr');
+      return row && row.dataset.status === 'error';
+    });
+
+    if (bulkDeleteBtn) { bulkDeleteBtn.style.display = count > 0 ? '' : 'none'; document.getElementById('bulk-count').textContent = count; }
+    if (bulkStopBtn)   { bulkStopBtn.style.display = stopIds.length > 0 ? '' : 'none'; document.getElementById('bulk-count-stop').textContent = stopIds.length; }
+    if (bulkRetryBtn)  { bulkRetryBtn.style.display = retryIds.length > 0 ? '' : 'none'; document.getElementById('bulk-count-retry').textContent = retryIds.length; }
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      document.querySelectorAll('.row-check').forEach(function (cb) { cb.checked = selectAll.checked; });
+      updateBulk();
+    });
+  }
+  document.querySelectorAll('.row-check').forEach(function (cb) { cb.addEventListener('change', updateBulk); });
+
+  window.bulkDelete = function () {
+    var ids = Array.from(document.querySelectorAll('.row-check:checked')).map(function (cb) { return cb.dataset.id; });
+    if (!ids.length) return;
+    if (!confirm('Xoá ' + ids.length + ' video đã chọn?')) return;
+    fetch('/admin/videos/bulk-delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ids })
+    }).then(function () { location.reload(); }).catch(function () { showToast('error', 'Lỗi xoá hàng loạt'); });
+  };
+
+  window.bulkStop = function () {
+    var ids = Array.from(document.querySelectorAll('.row-check:checked'))
+      .filter(function(cb) { var r = cb.closest('tr'); var s = r && r.dataset.status; return s === 'processing' || s === 'queued' || s === 'uploading'; })
+      .map(function(cb) { return cb.dataset.id; });
+    if (!ids.length) return;
+    if (!confirm('Stop ' + ids.length + ' video đang xử lý? Các video sẽ bị xoá khỏi hệ thống.')) return;
+    fetch('/admin/api/videos/bulk-cancel', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ids })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.ok) { showToast('success', 'Đã stop ' + d.cancelled + ' video'); setTimeout(function() { location.reload(); }, 1000); }
+      else showToast('error', d.message || 'Lỗi');
+    }).catch(function () { showToast('error', 'Lỗi kết nối'); });
+  };
+
+  window.bulkRetry = function () {
+    var ids = Array.from(document.querySelectorAll('.row-check:checked'))
+      .filter(function(cb) { var r = cb.closest('tr'); return r && r.dataset.status === 'error'; })
+      .map(function(cb) { return cb.dataset.id; });
+    if (!ids.length) return;
+    fetch('/admin/api/videos/bulk-retry', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ids })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.ok) { showToast('success', 'Đã thêm ' + d.retried + ' video vào hàng đợi retry'); setTimeout(function() { location.reload(); }, 1000); }
+      else showToast('error', d.message || 'Lỗi');
+    }).catch(function () { showToast('error', 'Lỗi kết nối'); });
+  };
+})();
+</script>
+
+<%- include('../partials/footer') %>

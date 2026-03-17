@@ -8,12 +8,13 @@ const path = require('path');
 
 /**
  * Upload một thư mục local lên remote server qua SFTP
- * @param {Object} serverInfo - { ip, port, username, password, storage_path }
- * @param {string} localDir   - Đường dẫn thư mục local cần upload
- * @param {string} remoteName - Tên thư mục trên server (VD: "5" cho videoId=5)
+ * @param {Object}   serverInfo  - { ip, port, username, password, storage_path }
+ * @param {string}   localDir    - Đường dẫn thư mục local cần upload
+ * @param {string}   remoteName  - Tên thư mục trên server (VD: "5" cho videoId=5)
+ * @param {Function} [onProgress]- Callback (filesUploaded, totalFiles, filename)
  * @returns {Promise<string>}  - Đường dẫn remote của file index.m3u8
  */
-function uploadHlsToServer(serverInfo, localDir, remoteName) {
+function uploadHlsToServer(serverInfo, localDir, remoteName, onProgress) {
     return new Promise((resolve, reject) => {
         const conn = new Client();
 
@@ -33,15 +34,40 @@ function uploadHlsToServer(serverInfo, localDir, remoteName) {
 
                 (async () => {
                     try {
-                        await ensureRemoteDir(sftp, remoteDir);
-                        for (const localPath of allFiles) {
+                        // Pre-create all remote directories first (sequential to avoid mkdir races)
+                        const allDirs = new Set(allFiles.map(localPath => {
                             const relative = path.relative(localDir, localPath).replace(/\\/g, '/');
-                            const remotePath = `${remoteDir}/${relative}`;
-                            const remoteDirOfFile = path.dirname(remotePath).replace(/\\/g, '/');
-                            await ensureRemoteDir(sftp, remoteDirOfFile);
-                            await sftpPut(sftp, localPath, remotePath);
-                            console.log(`[SFTP] Uploaded: ${relative}`);
+                            return path.dirname(`${remoteDir}/${relative}`).replace(/\\/g, '/');
+                        }));
+                        await ensureRemoteDir(sftp, remoteDir);
+                        for (const dir of allDirs) {
+                            await ensureRemoteDir(sftp, dir);
                         }
+
+                        // Parallel upload with concurrency limit
+                        const CONCURRENCY = 8;
+                        let uploaded = 0;
+                        let idx = 0;
+                        const total = allFiles.length;
+
+                        async function worker() {
+                            while (idx < total) {
+                                const localPath = allFiles[idx++];
+                                const relative = path.relative(localDir, localPath).replace(/\\/g, '/');
+                                const remotePath = `${remoteDir}/${relative}`;
+                                await sftpPut(sftp, localPath, remotePath);
+                                uploaded++;
+                                console.log(`[SFTP] Uploaded: ${relative}`);
+                                if (typeof onProgress === 'function') {
+                                    onProgress(uploaded, total, relative);
+                                }
+                            }
+                        }
+
+                        await Promise.all(
+                            Array.from({ length: Math.min(CONCURRENCY, total) }, worker)
+                        );
+
                         conn.end();
                         resolve(remoteDir);
                     } catch (uploadErr) {
