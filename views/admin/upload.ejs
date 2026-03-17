@@ -312,6 +312,18 @@
     }
   }
 
+  // Show flash message from sessionStorage (after XHR redirect)
+  (function () {
+    var flash = sessionStorage.getItem('upload_flash');
+    if (flash) {
+      sessionStorage.removeItem('upload_flash');
+      try {
+        var data = JSON.parse(flash);
+        if (data.msg) showToast(data.type || 'success', data.msg);
+      } catch (e) { /* ignore */ }
+    }
+  })();
+
   // XHR Upload with full-screen progress overlay
   var form = document.getElementById('upload-form');
   var submitBtn = document.getElementById('submit-btn');
@@ -326,6 +338,31 @@
     if (sec < 60) return Math.ceil(sec) + 's';
     if (sec < 3600) return Math.floor(sec / 60) + 'm ' + (Math.ceil(sec % 60)) + 's';
     return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
+  }
+
+  // Handle XHR response: extract flash message & redirect instead of document.write
+  function handleXhrResponse(html) {
+    // Try to extract success/error message from the response HTML
+    try {
+      var tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      var successEl = tmp.querySelector('.alert-success');
+      var errorEl = tmp.querySelector('.alert-error');
+      var el = successEl || errorEl;
+      if (el) {
+        // Remove SVG icons to get only text content
+        var svgs = el.querySelectorAll('svg');
+        for (var i = 0; i < svgs.length; i++) svgs[i].remove();
+        var msg = el.textContent.trim();
+        if (msg) {
+          sessionStorage.setItem('upload_flash', JSON.stringify({
+            type: successEl ? 'success' : 'error',
+            msg: msg
+          }));
+        }
+      }
+    } catch (e) { /* ignore parsing errors */ }
+    window.location.href = '/admin/upload';
   }
 
   function showUploadOverlay(fileName) {
@@ -409,7 +446,7 @@
         });
 
         xhr.addEventListener('load', function () {
-          document.open(); document.write(xhr.responseText); document.close();
+          handleXhrResponse(xhr.responseText);
         });
 
         xhr.addEventListener('error', function () {
@@ -487,7 +524,7 @@
           pollDone = true;
           clearInterval(progressPoll);
           stopPulseAnimation();
-          document.open(); document.write(xhr2.responseText); document.close();
+          handleXhrResponse(xhr2.responseText);
         });
 
         xhr2.addEventListener('error', function () {
