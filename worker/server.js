@@ -376,12 +376,13 @@ function writeMasterPlaylist(outputDir, qualities) {
 
 /** Báo progress về App server */
 async function reportProgress(videoId, progress, callbackToken) {
-    const url = `${APP_URL}/admin/api/worker/progress`;
+    const url = `${APP_URL}/api/worker/progress`;
     const token = callbackToken || WORKER_TOKEN;
     try {
         await axios.post(url, { videoId, progress }, {
             headers: { 'x-worker-token': token },
             timeout: 5000,
+            maxRedirects: 0,
         });
     } catch (e) {
         const status = e.response ? e.response.status : 'no response';
@@ -393,7 +394,7 @@ async function reportProgress(videoId, progress, callbackToken) {
 /** Báo kết quả cuối về App server (có retry 3 lần) */
 async function reportDone(videoId, ok, m3u8Url, thumbnailName, error, callbackToken) {
     const endpoint = ok ? 'done' : 'error';
-    const url = `${APP_URL}/admin/api/worker/${endpoint}`;
+    const url = `${APP_URL}/api/worker/${endpoint}`;
     const token = callbackToken || WORKER_TOKEN;
     const data = { videoId, m3u8Url, thumbnailName, error };
 
@@ -402,6 +403,7 @@ async function reportDone(videoId, ok, m3u8Url, thumbnailName, error, callbackTo
             const resp = await axios.post(url, data, {
                 headers: { 'x-worker-token': token },
                 timeout: 10000,
+                maxRedirects: 0,
             });
             console.log(`[Worker] reportDone(${endpoint}) success for videoId=${videoId} (attempt ${attempt}), response:`, resp.data);
             return; // thành công → exit

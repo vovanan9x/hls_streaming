@@ -59,6 +59,74 @@ const userRoutes = require('./routes/user');
 
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
+
+// ── Worker callback endpoints (OUTSIDE /admin to avoid auth/nginx issues) ──
+const workerCallbackRouter = require('express').Router();
+const workerPoolForCallback = require('./services/workerPool');
+
+function workerTokenAuth(req, res, next) {
+    const token = req.headers['x-worker-token'];
+    const workers = workerPoolForCallback.getWorkers();
+    if (workers.some(w => w.token === token)) return next();
+    return res.status(401).json({ error: 'Unauthorized' });
+}
+
+workerCallbackRouter.post('/progress', workerTokenAuth, (req, res) => {
+    const { videoId, progress } = req.body;
+    if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
+    console.log(`[Worker Callback] Progress: videoId=${videoId} progress=${progress}`);
+    const db = getDb();
+    db.prepare(`UPDATE videos SET progress=?, status='processing', updated_at=datetime('now','localtime') WHERE id=?`)
+        .run(Math.min(progress || 0, 99), videoId);
+    res.json({ ok: true });
+});
+
+workerCallbackRouter.post('/done', workerTokenAuth, (req, res) => {
+    const { videoId, thumbnailName } = req.body;
+    if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
+    console.log(`[Worker Callback] DONE: videoId=${videoId} thumbnail=${thumbnailName}`);
+    const db = getDb();
+    const video = db.prepare('SELECT * FROM videos WHERE id=?').get(videoId);
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+    const serverInfo = db.prepare('SELECT * FROM servers WHERE id=?').get(video.server_id);
+    let m3u8Url = '';
+    if (serverInfo) {
+        if (serverInfo.cdn_url && serverInfo.cdn_url.trim()) {
+            m3u8Url = `${serverInfo.cdn_url.replace(/\/$/, '')}/hls/${videoId}/master.m3u8`;
+        } else {
+            const base = (serverInfo.storage_path || '/var/hls-storage').replace(/\/$/, '');
+            m3u8Url = `http://${serverInfo.ip}:80${base}/${videoId}/master.m3u8`;
+        }
+    }
+    const iframeUrl = m3u8Url ? `/watch/${videoId}` : '';
+    db.prepare(`UPDATE videos SET m3u8_url=?, iframe_url=?, thumbnail=?, status='ready', progress=100,
+        updated_at=datetime('now','localtime') WHERE id=?`)
+        .run(m3u8Url, iframeUrl, thumbnailName || video.thumbnail || '', videoId);
+    const { encodeQueue } = require('./services/queue');
+    encodeQueue.markRemoteDone(videoId);
+    console.log(`[Worker Callback] Video ${videoId} DONE → ${m3u8Url}`);
+    res.json({ ok: true });
+});
+
+workerCallbackRouter.post('/error', workerTokenAuth, (req, res) => {
+    const { videoId, error } = req.body;
+    if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
+    console.log(`[Worker Callback] ERROR: videoId=${videoId} error=${error}`);
+    const db = getDb();
+    const video = db.prepare('SELECT title FROM videos WHERE id=?').get(videoId);
+    db.prepare(`UPDATE videos SET status='error', updated_at=datetime('now','localtime') WHERE id=?`).run(videoId);
+    const { addErrorLog } = require('./database');
+    addErrorLog('encoding', {
+        videoId, videoTitle: video ? video.title : '',
+        message: error || 'Unknown worker error',
+    });
+    const { encodeQueue } = require('./services/queue');
+    encodeQueue.markRemoteDone(videoId);
+    res.json({ ok: true });
+});
+
+app.use('/api/worker', workerCallbackRouter);
+
 app.use('/', userRoutes);
 
 // Public API v1 (same handlers registered in adminRoutes via relative paths)
