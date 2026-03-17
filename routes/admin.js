@@ -19,6 +19,9 @@ const { purgeVideoCache } = require('../services/cfCache');
 // In-memory SFTP upload progress: videoId -> { done, total, file }
 const sftpProgress = new Map();
 
+// In-memory remote download progress: trackId -> { downloaded, total, percent, speed, done, error }
+const downloadProgress = new Map();
+
 /** Read configurable page size from settings, default 20 */
 function getPageSize() {
     const raw = getSetting('admin_page_size');
@@ -134,6 +137,20 @@ router.get('/upload', requireUploader, (req, res) => {
     res.render('admin/upload', { title: 'Upload Video', servers, noServers, leastLoaded, error: null, success: null });
 });
 
+// GET /admin/upload/download-progress — poll remote download progress
+router.get('/upload/download-progress', requireUploader, (req, res) => {
+    const trackId = req.query.trackId;
+    if (!trackId || !downloadProgress.has(trackId)) {
+        return res.json({ percent: -1 }); // no data
+    }
+    const p = downloadProgress.get(trackId);
+    if (p.done) {
+        // Cleanup after client reads final state
+        setTimeout(() => downloadProgress.delete(trackId), 5000);
+    }
+    res.json(p);
+});
+
 // POST /admin/upload - Handle video upload (uploader + admin)
 router.post('/upload', requireUploader, (req, res) => {
     const uploadFields = upload.fields([{ name: 'video', maxCount: 1 }]);
@@ -177,12 +194,35 @@ router.post('/upload', requireUploader, (req, res) => {
 
             let videoFilePath, videoFileName;
 
+            // Track download progress for remote/gdrive uploads
+            const trackId = req.body.download_track_id || '';
+            let lastReportTime = 0;
+            const onDownloadProgress = trackId ? (downloaded, total) => {
+                const now = Date.now();
+                if (now - lastReportTime < 300 && downloaded < total) return; // throttle to 300ms
+                lastReportTime = now;
+                const prev = downloadProgress.get(trackId) || {};
+                const dt = (now - (prev._lastTime || now)) / 1000;
+                const speed = dt > 0.2 ? (downloaded - (prev.downloaded || 0)) / dt : (prev.speed || 0);
+                downloadProgress.set(trackId, {
+                    downloaded, total,
+                    percent: total > 0 ? Math.round((downloaded / total) * 100) : 0,
+                    speed: Math.round(speed),
+                    eta: speed > 0 ? Math.round((total - downloaded) / speed) : -1,
+                    done: false,
+                    _lastTime: now,
+                });
+            } : null;
+
             if (upload_type === 'remote' && remote_url) {
                 try {
-                    const result = await downloadRemoteFile(remote_url, 'video.mp4');
+                    if (trackId) downloadProgress.set(trackId, { downloaded: 0, total: 0, percent: 0, speed: 0, eta: -1, done: false, _lastTime: Date.now() });
+                    const result = await downloadRemoteFile(remote_url, 'video.mp4', onDownloadProgress);
+                    if (trackId) { const p = downloadProgress.get(trackId); if (p) { p.percent = 100; p.done = true; } }
                     videoFilePath = result.filePath;
                     videoFileName = result.fileName;
                 } catch (dlErr) {
+                    if (trackId) downloadProgress.set(trackId, { percent: -1, done: true, error: dlErr.message });
                     return renderError(`Lỗi tải file remote: ${dlErr.message}`);
                 }
             } else if (req.files && req.files.video && req.files.video[0]) {
@@ -208,7 +248,9 @@ router.post('/upload', requireUploader, (req, res) => {
       `).run(title.trim(), description || '', videoFileName, resolvedServerId, req.session.user.id, qualitiesJson, req.body.visibility || 'public', maxOrder.max_order + 1);
 
             const videoId = result.lastInsertRowid;
-            const queuePos = encodeQueue.push({ videoId, videoFilePath, videoFileName, autoThumb: thumb_mode !== 'upload', qualities });
+            // Pass sourceUrl for remote/gdrive so worker can download directly
+            const sourceUrl = (upload_type === 'remote' && remote_url) ? remote_url : null;
+            const queuePos = encodeQueue.push({ videoId, videoFilePath, videoFileName, autoThumb: thumb_mode !== 'upload', qualities, sourceUrl });
 
             const queueMsg = queuePos === 0 && !encodeQueue.running
                 ? 'Đang xử lý ngay...'
@@ -241,10 +283,10 @@ router.post('/upload-thumbnail', requireUploader, thumbUpload.single('thumbnail'
 });
 
 /**
- * Process video: kiểm tra encode worker rảnh → gửi file + serverConfig sang worker encode và SFTP.
+ * Process video: kiểm tra encode worker rảnh → gửi file/URL + serverConfig sang worker encode và SFTP.
  * Nếu không có worker → fallback encode local + SFTP từ app.
  */
-async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = true, qualities = ['sd']) {
+async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = true, qualities = ['sd'], sourceUrl = null) {
     const db = getDb();
     const STORAGE_DIR = path.join(__dirname, '..', 'storage');
 
@@ -269,21 +311,44 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
         try {
             const worker = await workerPool.findIdleWorker();
             if (worker) {
-                console.log(`[Process] Dispatching file to worker ${worker.label} for videoId=${videoId}...`);
-                const ok = await workerPool.dispatchFileToWorker(worker, {
-                    videoId,
-                    videoFilePath,
-                    qualities,
-                    autoThumb,
-                }, serverInfo);
+                let ok = false;
+
+                // Ưu tiên dispatch URL (nhanh hơn, worker tự download)
+                if (sourceUrl) {
+                    console.log(`[Process] Dispatching URL to worker ${worker.label} for videoId=${videoId}...`);
+                    ok = await workerPool.dispatchUrlToWorker(worker, {
+                        videoId,
+                        sourceUrl,
+                        qualities,
+                        autoThumb,
+                    }, serverInfo);
+                }
+
+                // Fallback: dispatch file nếu URL dispatch thất bại hoặc không có sourceUrl
+                if (!ok) {
+                    console.log(`[Process] Dispatching file to worker ${worker.label} for videoId=${videoId}...`);
+                    ok = await workerPool.dispatchFileToWorker(worker, {
+                        videoId,
+                        videoFilePath,
+                        qualities,
+                        autoThumb,
+                    }, serverInfo);
+                }
 
                 if (ok) {
                     // Worker nhận rồi — nó sẽ encode + SFTP + callback về /api/worker/done
-                    // Queue sẽ được giải phóng khi callback đến
                     const { encodeQueue } = require('../services/queue');
                     encodeQueue.remoteJobs.set(videoId, { worker, job: { videoId }, dispatchedAt: new Date() });
                     console.log(`[Process] Video ${videoId} dispatched to worker ${worker.label}, waiting for callback...`);
-                    return; // Xong — callback worker sẽ update DB
+
+                    // Xóa file local nếu dùng URL dispatch (file đã download không cần giữ)
+                    if (sourceUrl && videoFilePath && fs.existsSync(videoFilePath)) {
+                        try {
+                            fs.unlinkSync(videoFilePath);
+                            console.log(`[Cleanup] Deleted local file (worker will download from URL): ${videoFilePath}`);
+                        } catch (e) { /* ignore */ }
+                    }
+                    return;
                 } else {
                     console.warn(`[Process] Worker dispatch thất bại, fallback encode local...`);
                 }

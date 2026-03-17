@@ -423,7 +423,7 @@
         xhr.send(fd);
 
       } else if (uploadType === 'remote' || uploadType === 'gdrive') {
-        // ── Remote URL / Google Drive — indeterminate progress ──
+        // ── Remote URL / Google Drive — poll server for download progress ──
         var urlInput = uploadType === 'remote'
           ? form.querySelector('input[name="remote_url"]')
           : form.querySelector('input[name="gdrive_url"]');
@@ -436,25 +436,63 @@
           ? '📥 Đang tải file từ Google Drive...'
           : '📥 Đang tải file từ Remote URL...';
 
+        // Generate unique trackId for progress polling
+        var trackId = 'dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
         showUploadOverlay(displayName);
         document.getElementById('ov-phase').textContent = phaseText;
         document.getElementById('ov-phase').style.color = '#facc15';
-        document.getElementById('ov-pct').textContent = '~';
+        document.getElementById('ov-pct').textContent = '0';
         document.getElementById('ov-speed').textContent = '...';
         document.getElementById('ov-eta').textContent = '...';
-        document.getElementById('ov-transferred').textContent = 'đang tải...';
+        document.getElementById('ov-transferred').textContent = 'đang kết nối...';
         startPulseAnimation();
         submitBtn.disabled = true;
 
         var fd2 = new FormData(form);
+        fd2.append('download_track_id', trackId);
         var xhr2 = new XMLHttpRequest();
+        var pollDone = false;
+
+        // Poll download progress from server
+        var progressPoll = setInterval(function () {
+          if (pollDone) return;
+          var pxhr = new XMLHttpRequest();
+          pxhr.open('GET', '/admin/upload/download-progress?trackId=' + encodeURIComponent(trackId));
+          pxhr.onload = function () {
+            if (pollDone) return;
+            try {
+              var d = JSON.parse(pxhr.responseText);
+              if (d.percent >= 0 && d.total > 0) {
+                stopPulseAnimation();
+                document.getElementById('ov-pct').textContent = d.percent;
+                document.getElementById('ov-bar-fill').style.width = Math.min(d.percent, 100) + '%';
+                var speedStr = d.speed > 0 ? fmtBytes(d.speed) + '/s' : '...';
+                var etaStr = d.eta > 0 ? fmtTime(d.eta) : '...';
+                document.getElementById('ov-speed').textContent = speedStr;
+                document.getElementById('ov-eta').textContent = etaStr;
+                document.getElementById('ov-transferred').textContent = fmtBytes(d.downloaded) + ' / ' + fmtBytes(d.total);
+                if (d.percent >= 100) {
+                  document.getElementById('ov-phase').textContent = '⚙️ Đang xử lý & thêm vào hàng đợi...';
+                  document.getElementById('ov-phase').style.color = '#34d399';
+                  document.getElementById('ov-bar-fill').style.background = 'linear-gradient(90deg, #34d399, #059669)';
+                }
+              }
+            } catch (ex) { /* ignore parse error */ }
+          };
+          pxhr.send();
+        }, 800);
 
         xhr2.addEventListener('load', function () {
+          pollDone = true;
+          clearInterval(progressPoll);
           stopPulseAnimation();
           document.open(); document.write(xhr2.responseText); document.close();
         });
 
         xhr2.addEventListener('error', function () {
+          pollDone = true;
+          clearInterval(progressPoll);
           stopPulseAnimation();
           document.getElementById('upload-overlay').style.opacity = '0';
           setTimeout(function () { document.getElementById('upload-overlay').style.display = 'none'; }, 300);

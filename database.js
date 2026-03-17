@@ -151,6 +151,46 @@ function initTables() {
   for (const sql of migrations) {
     try { db.exec(sql); } catch (e) { /* already exists */ }
   }
+
+  // ── Performance Indexes ──
+  db.exec(`
+    -- videos: thường query theo status, server_id, uploaded_by, visibility, sort_order
+    CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
+    CREATE INDEX IF NOT EXISTS idx_videos_server_id ON videos(server_id);
+    CREATE INDEX IF NOT EXISTS idx_videos_uploaded_by ON videos(uploaded_by);
+    CREATE INDEX IF NOT EXISTS idx_videos_visibility ON videos(visibility);
+    CREATE INDEX IF NOT EXISTS idx_videos_sort_order ON videos(sort_order DESC);
+    CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_videos_status_sort ON videos(status, sort_order DESC);
+
+    -- view_logs: analytics queries dùng video_id, session_key, last_ping
+    CREATE INDEX IF NOT EXISTS idx_view_logs_video_id ON view_logs(video_id);
+    CREATE INDEX IF NOT EXISTS idx_view_logs_session_key ON view_logs(session_key);
+    CREATE INDEX IF NOT EXISTS idx_view_logs_last_ping ON view_logs(last_ping);
+    CREATE INDEX IF NOT EXISTS idx_view_logs_video_session ON view_logs(video_id, session_key);
+
+    -- error_logs: filter theo type, sắp xếp theo created_at
+    CREATE INDEX IF NOT EXISTS idx_error_logs_type ON error_logs(type);
+    CREATE INDEX IF NOT EXISTS idx_error_logs_created_at ON error_logs(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_error_logs_video_id ON error_logs(video_id);
+
+    -- delete_requests: filter theo status, video_id
+    CREATE INDEX IF NOT EXISTS idx_delete_requests_status ON delete_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_delete_requests_video_id ON delete_requests(video_id);
+
+    -- cdn_domains: lookup theo server_id, is_active
+    CREATE INDEX IF NOT EXISTS idx_cdn_domains_server_id ON cdn_domains(server_id);
+    CREATE INDEX IF NOT EXISTS idx_cdn_domains_active ON cdn_domains(is_active);
+
+    -- users: API token lookup
+    CREATE INDEX IF NOT EXISTS idx_users_api_token ON users(api_token);
+
+    -- servers: active filter
+    CREATE INDEX IF NOT EXISTS idx_servers_active ON servers(is_active);
+
+    -- cf_create_jobs: status filter
+    CREATE INDEX IF NOT EXISTS idx_cf_jobs_status ON cf_create_jobs(status);
+  `);
 }
 
 function seedDefaultAdmin() {

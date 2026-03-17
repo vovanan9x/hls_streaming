@@ -101,7 +101,7 @@ class EncodeQueue extends EventEmitter {
 
         try {
             // processVideo() sẽ tự quyết định: dispatch sang worker hay encode local
-            await this._processVideo(job.videoId, job.videoFilePath, job.videoFileName, job.autoThumb, job.qualities);
+            await this._processVideo(job.videoId, job.videoFilePath, job.videoFileName, job.autoThumb, job.qualities, job.sourceUrl);
 
             // Nếu processVideo() return sớm (dispatched sang worker),
             // remoteJobs sẽ có entry → đánh dấu là đang chờ callback.

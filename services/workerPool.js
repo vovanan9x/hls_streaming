@@ -119,7 +119,23 @@ async function dispatchFileToWorker(worker, job, serverInfo) {
         form.append('serverConfig', JSON.stringify(serverConfig));
 
         const fileSize = fs.statSync(videoFilePath).size;
-        const timeoutMs = Math.max(300_000, Math.ceil(fileSize / (1024 * 1024)) * 3000); // min 5 phút, ~3s/MB
+        const sizeMB = (fileSize / 1024 / 1024).toFixed(1);
+        // Longer timeout for large files: min 10 min, ~10s/MB (caters for slow upload speeds)
+        const timeoutMs = Math.max(600_000, Math.ceil(fileSize / (1024 * 1024)) * 10_000);
+
+        console.log(`[WorkerPool] Uploading ${sizeMB}MB to ${worker.label} (timeout: ${Math.round(timeoutMs/1000)}s)...`);
+
+        // Track upload progress
+        let lastPctLogged = 0;
+        const onUploadProgress = (progressEvent) => {
+            if (progressEvent.total) {
+                const pct = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+                if (pct >= lastPctLogged + 10) {
+                    lastPctLogged = pct;
+                    console.log(`[WorkerPool] Upload progress: ${pct}% (${(progressEvent.loaded / 1024 / 1024).toFixed(1)}MB / ${sizeMB}MB)`);
+                }
+            }
+        };
 
         await axios.post(`${worker.url}/upload-encode`, form, {
             headers: {
@@ -129,13 +145,57 @@ async function dispatchFileToWorker(worker, job, serverInfo) {
             timeout: timeoutMs,
             maxContentLength: Infinity,
             maxBodyLength: Infinity,
+            onUploadProgress,
         });
 
-        const sizeMB = (fileSize / 1024 / 1024).toFixed(1);
         console.log(`[WorkerPool] File dispatched videoId=${videoId} (${sizeMB}MB) → ${worker.url} (${worker.label})`);
         return true;
     } catch (e) {
         console.error(`[WorkerPool] dispatchFileToWorker failed to ${worker.url}:`, e.message);
+        return false;
+    }
+}
+
+/**
+ * Dispatch job bằng URL — Worker tự download file rồi encode + SFTP.
+ * Nhanh hơn dispatchFileToWorker vì bỏ bước App → Worker file transfer.
+ *
+ * @param {object} worker  - { url, token, label }
+ * @param {object} job     - { videoId, sourceUrl, qualities, autoThumb }
+ * @param {object} serverInfo - server config từ DB
+ * @returns {boolean} true nếu dispatch thành công
+ */
+async function dispatchUrlToWorker(worker, job, serverInfo) {
+    const { videoId, sourceUrl, qualities, autoThumb } = job;
+
+    try {
+        const serverConfig = {
+            ip: serverInfo.ip,
+            port: serverInfo.port || 22,
+            username: serverInfo.username,
+            password: serverInfo.password,
+            storage_path: serverInfo.storage_path || '/var/hls-storage',
+            cdn_url: serverInfo.cdn_url || '',
+        };
+
+        console.log(`[WorkerPool] Dispatching URL to ${worker.label} for videoId=${videoId}...`);
+
+        await axios.post(`${worker.url}/download-encode`, {
+            videoId,
+            sourceUrl,
+            qualities: JSON.stringify(qualities || ['sd']),
+            autoThumb: autoThumb ? 'true' : 'false',
+            callbackToken: worker.token,
+            serverConfig: JSON.stringify(serverConfig),
+        }, {
+            headers: { 'x-worker-token': worker.token },
+            timeout: 30000, // chỉ cần đợi worker respond OK, không đợi download
+        });
+
+        console.log(`[WorkerPool] URL dispatched videoId=${videoId} → ${worker.url} (${worker.label})`);
+        return true;
+    } catch (e) {
+        console.error(`[WorkerPool] dispatchUrlToWorker failed to ${worker.url}:`, e.message);
         return false;
     }
 }
@@ -171,6 +231,7 @@ module.exports = {
     findIdleWorker,
     dispatchToWorker,
     dispatchFileToWorker,
+    dispatchUrlToWorker,
     cancelOnWorker,
     getAllWorkersStatus,
     pingWorker

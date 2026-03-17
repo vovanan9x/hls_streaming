@@ -26,6 +26,13 @@ const SFTPClient = require('ssh2-sftp-client');
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// Increase request timeout for large file uploads (30 min)
+app.use((req, res, next) => {
+    req.setTimeout(1800000); // 30 min
+    res.setTimeout(1800000);
+    next();
+});
+
 const PORT = process.env.WORKER_PORT || 4000;
 const WORKER_TOKEN = process.env.WORKER_TOKEN || 'change-this-secret-token';
 const APP_URL = process.env.APP_URL || 'http://app-server:3000'; // URL của app server
@@ -63,7 +70,10 @@ const tmpStorage = multer.diskStorage({
         cb(null, `video_${Date.now()}${ext}`);
     }
 });
-const tmpUpload = multer({ storage: tmpStorage });
+const tmpUpload = multer({
+    storage: tmpStorage,
+    limits: { fileSize: Infinity }, // no file size limit
+});
 
 // ====== Middleware: Auth ======
 function auth(req, res, next) {
@@ -157,6 +167,90 @@ app.post('/upload-encode', auth, async (req, res) => {
     });
 });
 
+/** POST /download-encode — Worker tự download file từ URL rồi encode+SFTP (nhanh hơn upload-encode) */
+app.post('/download-encode', auth, async (req, res) => {
+    if (currentJob) {
+        return res.status(409).json({ error: 'Worker đang bận', currentVideoId: currentJob.videoId });
+    }
+
+    const { videoId, sourceUrl, qualities: rawQ, autoThumb: rawThumb, callbackToken, serverConfig: rawServer } = req.body;
+
+    if (!videoId || !sourceUrl) {
+        return res.status(400).json({ error: 'Thiếu videoId hoặc sourceUrl' });
+    }
+
+    let qualities, autoThumb, serverConfig;
+    try {
+        qualities = typeof rawQ === 'string' ? JSON.parse(rawQ) : (rawQ || ['sd']);
+        autoThumb = rawThumb === true || rawThumb === 'true';
+        serverConfig = typeof rawServer === 'string' ? JSON.parse(rawServer) : rawServer;
+    } catch (parseErr) {
+        return res.status(400).json({ error: 'Parse lỗi: ' + parseErr.message });
+    }
+
+    // Trả về ngay để app không bị block
+    res.json({ ok: true, message: 'Worker bắt đầu download & encode...' });
+
+    // Download file từ URL
+    const ext = path.extname(sourceUrl.split('?')[0]) || '.mp4';
+    const videoFileName = `video_${videoId}_${Date.now()}${ext}`;
+    const videoFilePath = path.join(TMP_DIR, videoFileName);
+
+    try {
+        console.log(`[Worker] Download-encode videoId=${videoId} from URL: ${sourceUrl.substring(0, 100)}...`);
+
+        const axios2 = require('axios');
+        const response = await axios2({
+            method: 'GET',
+            url: sourceUrl,
+            responseType: 'stream',
+            timeout: 1800000, // 30 min
+        });
+
+        const totalSize = parseInt(response.headers['content-length'] || '0');
+        let downloaded = 0;
+        let lastLogPct = 0;
+
+        response.data.on('data', (chunk) => {
+            downloaded += chunk.length;
+            if (totalSize > 0) {
+                const pct = Math.round((downloaded / totalSize) * 100);
+                if (pct >= lastLogPct + 10) {
+                    lastLogPct = pct;
+                    console.log(`[Worker] Download progress: ${pct}% (${(downloaded / 1024 / 1024).toFixed(1)}MB / ${(totalSize / 1024 / 1024).toFixed(1)}MB)`);
+                }
+            }
+        });
+
+        const writer = fs.createWriteStream(videoFilePath);
+        response.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
+        const sizeMB = (fs.statSync(videoFilePath).size / 1024 / 1024).toFixed(1);
+        console.log(`[Worker] Download complete: ${sizeMB}MB → ${videoFileName}`);
+
+        // Chạy encode async
+        processJob({
+            videoId,
+            videoFilePath,
+            videoFileName,
+            qualities,
+            autoThumb,
+            callbackToken,
+            serverConfig,
+            cleanupAfter: true,
+        });
+    } catch (dlErr) {
+        console.error(`[Worker] Download failed for videoId=${videoId}:`, dlErr.message);
+        await reportDone(videoId, false, null, '', `Download failed: ${dlErr.message}`, callbackToken);
+        try { if (fs.existsSync(videoFilePath)) fs.unlinkSync(videoFilePath); } catch (e) { /* ignore */ }
+    }
+});
+
 
 /** POST /encode — Legacy: App gửi job encode (dùng shared storage) */
 app.post('/encode', auth, async (req, res) => {
@@ -235,7 +329,7 @@ function encodeQuality(inputPath, outputDir, preset, qualityName, totalDur, onPr
             `-b:a ${preset.audioBitrate}`,
             '-codec:v libx264',
             '-codec:a aac',
-            '-preset fast',
+            '-preset veryfast',
             '-profile:v baseline',
             '-level 3.0',
             '-start_number 0',
@@ -332,15 +426,35 @@ async function sftpUploadHls(serverConfig, localHlsDir, videoId) {
 
         // Upload tất cả file trong thư mục HLS
         const files = getAllFilesRecursive(localHlsDir);
-        for (const localFile of files) {
-            const relPath = path.relative(localHlsDir, localFile);
-            const remoteFile = `${remotePath}/${relPath.replace(/\\/g, '/')}`;
-            const remoteDir = path.dirname(remoteFile);
-            await sftp.mkdir(remoteDir, true).catch(() => { /* đã tồn tại */ });
-            await sftp.put(localFile, remoteFile);
+
+        // Pre-create all remote directories
+        const allDirs = new Set(files.map(f => {
+            const relPath = path.relative(localHlsDir, f).replace(/\\/g, '/');
+            return path.dirname(`${remotePath}/${relPath}`).replace(/\\/g, '/');
+        }));
+        for (const dir of allDirs) {
+            await sftp.mkdir(dir, true).catch(() => { /* đã tồn tại */ });
         }
 
-        console.log(`[Worker] SFTP upload done: ${remotePath} (${files.length} files)`);
+        // Parallel upload with concurrency limit
+        const CONCURRENCY = 8;
+        let idx = 0;
+        const total = files.length;
+
+        async function worker() {
+            while (idx < total) {
+                const localFile = files[idx++];
+                const relPath = path.relative(localHlsDir, localFile).replace(/\\/g, '/');
+                const remoteFile = `${remotePath}/${relPath}`;
+                await sftp.put(localFile, remoteFile);
+            }
+        }
+
+        await Promise.all(
+            Array.from({ length: Math.min(CONCURRENCY, total) }, worker)
+        );
+
+        console.log(`[Worker] SFTP upload done: ${remotePath} (${files.length} files, ${CONCURRENCY} parallel)`);
     } finally {
         await sftp.end().catch(() => { /* ignore */ });
     }
@@ -460,9 +574,13 @@ async function processJob({ videoId, videoFilePath, videoFileName, qualities, au
 }
 
 // ====== Start ======
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`🔧 HLS Encode Worker đang chạy: http://0.0.0.0:${PORT}`);
     console.log(`   Tmp Dir: ${TMP_DIR}`);
     console.log(`   App URL: ${APP_URL}`);
     console.log(`   Legacy Storage: ${STORAGE_BASE}`);
 });
+
+// Keep-alive timeout: prevent connection drops during large file uploads
+server.keepAliveTimeout = 1800000; // 30 min
+server.headersTimeout = 1830000;   // slightly more than keepAliveTimeout
