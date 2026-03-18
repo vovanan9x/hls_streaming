@@ -22,10 +22,11 @@ function signUrl(originalUrl, secret, ttlSeconds = 14400) {
     const parsed = new URL(originalUrl);
     const uri = parsed.pathname; // VD: /hls/24/master.m3u8
 
-    // md5(expires + uri + secret) → binary → base64url
+    // md5(expires + uri + " " + secret) → binary → base64url
+    // Dấu cách trước secret để khớp với nginx: secure_link_md5 "$arg_expires$uri SECRET";
     const hash = crypto
         .createHash('md5')
-        .update(expires + uri + secret)
+        .update(expires + uri + ' ' + secret)
         .digest('base64')
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
