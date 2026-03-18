@@ -49,8 +49,8 @@ fs.mkdirSync(TMP_DIR, { recursive: true });
 // sd: giảm 30% độ phân giải so với gốc (tức 70% kích thước gốc)
 // hd: giữ nguyên độ phân giải gốc 100%
 const QUALITY_PRESETS = {
-    'sd': { scaleFactor: 0.7, videoBitrate: '2000k', audioBitrate: '128k', bandwidth: 2176000, scaleDown: 'percent' },
-    'hd': { videoBitrate: '0', audioBitrate: '192k', bandwidth: 8000000, scaleDown: false },
+    'sd': { scaleFactor: 0.7, crf: 23, audioBitrate: '128k', bandwidth: 2176000, scaleDown: 'percent' },
+    'hd': { crf: 18, audioBitrate: '192k', bandwidth: 8000000, scaleDown: false },
     // Legacy presets (backwards compat)
     '360p': { width: 640, height: 360, videoBitrate: '800k', audioBitrate: '96k', bandwidth: 896000, scaleDown: 'fixed' },
     '480p': { width: 854, height: 480, videoBitrate: '1400k', audioBitrate: '128k', bandwidth: 1536000, scaleDown: 'fixed' },
@@ -320,18 +320,24 @@ function encodeQuality(inputPath, outputDir, preset, qualityName, totalDur, onPr
             outputOpts.push(`-vf scale=trunc(iw*${f}/2)*2:trunc(ih*${f}/2)*2`);
         }
         // HD: không thêm filter scale
-        if (preset.videoBitrate === '0') {
-            outputOpts.push('-crf 18');
-        } else {
+        // CRF mode: chất lượng đều, file nhỏ hơn ABR cố định
+        if (preset.crf !== undefined) {
+            outputOpts.push(`-crf ${preset.crf}`);
+        } else if (preset.videoBitrate) {
             outputOpts.push(`-b:v ${preset.videoBitrate}`);
         }
         outputOpts.push(
             `-b:a ${preset.audioBitrate}`,
             '-codec:v libx264',
             '-codec:a aac',
-            '-preset veryfast',
-            '-profile:v baseline',
-            '-level 3.0',
+            '-preset fast',
+            '-profile:v high',
+            '-level 4.1',
+            '-pix_fmt yuv420p',
+            '-g 48',
+            '-keyint_min 48',
+            '-sc_threshold 0',
+            '-ac 2',
             '-start_number 0',
             '-hls_time 6',
             '-hls_list_size 0',

@@ -81,6 +81,54 @@
                         <a href="/admin/servers/add" class="btn btn-ghost">➕ Thêm Server mới</a>
                     </div>
 
+                    <div class="card" style="margin-bottom:20px;">
+                        <div class="card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                          Signed URL (Chống Hotlink)
+                        </div><br>
+                        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+                          Bảo vệ link HLS bằng token + thời hạn. Người copy URL m3u8 → hết hạn → không xem được.<br>
+                          <span style="color:#94a3b8;">Cần cấu hình nginx <code>secure_link</code> trên storage server. Xem <a href="/admin/guide" style="color:var(--accent);">Hướng dẫn</a>.</span>
+                        </p>
+
+                        <% if (signedUrlSecret) { %>
+                          <div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;display:flex;align-items:center;gap:8px;">
+                            <span style="color:#34d399;">🔒</span>
+                            <span style="color:var(--text-primary);">Signed URL đang <strong>BẬT</strong> — TTL: <strong><%= signedUrlTtl %> giờ</strong></span>
+                          </div>
+                        <% } else { %>
+                          <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#fbbf24;">
+                            ⚠ Signed URL đang <strong>TẮT</strong> — link HLS không được bảo vệ.
+                          </div>
+                        <% } %>
+
+                        <form action="/admin/settings/signed-url" method="POST">
+                          <div style="margin-bottom:12px;">
+                            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px;">Secret Key (chia sẻ với nginx)</label>
+                            <div style="display:flex;gap:8px;">
+                              <input type="text" name="signed_url_secret" id="signed-url-secret" value="<%= signedUrlSecret %>"
+                                style="flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:monospace;font-size:12px;color:var(--text-primary);"
+                                placeholder="Nhập hoặc tự tạo bằng nút bên cạnh">
+                              <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('signed-url-secret').value=Array.from(crypto.getRandomValues(new Uint8Array(24)),b=>b.toString(16).padStart(2,'0')).join('')">🔄 Tạo</button>
+                            </div>
+                          </div>
+                          <div style="display:flex;gap:12px;align-items:center;margin-bottom:14px;">
+                            <label style="font-size:12px;color:var(--text-muted);">Thời hạn (TTL):</label>
+                            <select name="signed_url_ttl" class="form-select" style="width:auto;">
+                              <% [1,2,4,8,12,24,48,72].forEach(function(h) { %>
+                                <option value="<%= h %>" <%= (signedUrlTtl || '4') == h ? 'selected' : '' %>><%= h %> giờ</option>
+                              <% }); %>
+                            </select>
+                          </div>
+                          <div style="display:flex;gap:10px;">
+                            <button type="submit" class="btn btn-primary btn-sm">💾 Lưu</button>
+                            <% if (signedUrlSecret) { %>
+                              <button type="button" class="btn btn-ghost btn-sm" style="color:#f87171;" onclick="if(confirm('Tắt Signed URL? Link HLS sẽ không được bảo vệ.')){document.getElementById('signed-url-secret').value='';this.closest('form').submit();}">🔓 Tắt bảo vệ</button>
+                            <% } %>
+                          </div>
+                        </form>
+                    </div>
+
                     <div class="card" style="margin-top:20px">
                         <div class="card-title">🔑 API Token</div><br>
                         <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">

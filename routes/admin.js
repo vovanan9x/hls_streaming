@@ -1129,12 +1129,20 @@ router.post('/api/servers/:id/ping', requireAdmin, async (req, res) => {
 
     let ok = false;
     let message = '';
+    let disk = null;
     const now = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
     try {
-        const { testConnection } = require('../services/sftp');
+        const { testConnection, getDiskUsage } = require('../services/sftp');
         ok = await testConnection(server);
         message = ok ? `SFTP kết nối ${server.ip}:${server.port} thành công!` : `SFTP kết nối thất bại — server không phản hồi.`;
+        // Lấy dung lượng ổ đĩa nếu kết nối thành công
+        if (ok) {
+            disk = await getDiskUsage(server);
+            if (disk) {
+                message += ` | Ổ đĩa: ${disk.used}/${disk.total} (${disk.percent})`;
+            }
+        }
     } catch (e) {
         ok = false;
         message = e.message;
@@ -1143,7 +1151,7 @@ router.post('/api/servers/:id/ping', requireAdmin, async (req, res) => {
     const newStatus = ok ? 'live' : 'die';
     db.prepare(`UPDATE servers SET status=?, last_checked=? WHERE id=?`).run(newStatus, now, server.id);
 
-    res.json({ ok, status: newStatus, message, last_checked: now });
+    res.json({ ok, status: newStatus, message, last_checked: now, disk });
 });
 
 
@@ -1330,6 +1338,8 @@ router.get('/settings', requireAdmin, (req, res) => {
         apiToken: user ? user.api_token : null,
         currentPageSize: getPageSize(),
         driveServiceEmail,
+        signedUrlSecret: getSetting('signed_url_secret', ''),
+        signedUrlTtl: getSetting('signed_url_ttl', '4'),
         success: req.query.saved ? 'Đã lưu cài đặt!' : null,
         error: null,
     });
@@ -1349,6 +1359,16 @@ router.post('/settings/gdrive-sa', requireAdmin, (req, res) => {
     } catch {
         return res.redirect('/admin/settings?error=sa_parse');
     }
+    res.redirect('/admin/settings?saved=1');
+});
+
+// POST /admin/settings/signed-url — Save Signed URL settings
+router.post('/settings/signed-url', requireAdmin, (req, res) => {
+    const secret = (req.body.signed_url_secret || '').trim();
+    const ttl = parseInt(req.body.signed_url_ttl, 10) || 4;
+    setSetting('signed_url_secret', secret);
+    setSetting('signed_url_ttl', String(ttl));
+    console.log(`[Settings] Signed URL: secret=${secret ? '***' : '(empty)'}, ttl=${ttl}h`);
     res.redirect('/admin/settings?saved=1');
 });
 

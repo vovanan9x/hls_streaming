@@ -232,5 +232,53 @@ function deleteVideoFromStorage(serverInfo, videoId) {
         });
     });
 }
+/**
+ * Lấy thông tin dung lượng ổ đĩa của storage server qua SSH
+ * @param {Object} serverInfo - { ip, port, username, password, storage_path }
+ * @returns {Promise<{total:string, used:string, available:string, percent:string}|null>}
+ */
+function getDiskUsage(serverInfo) {
+    return new Promise((resolve) => {
+        if (!serverInfo || !serverInfo.ip) return resolve(null);
 
-module.exports = { uploadHlsToServer, testConnection, deleteVideoFromStorage };
+        const conn = new Client();
+        const storagePath = serverInfo.storage_path || '/';
+        const timeout = setTimeout(() => { conn.end(); resolve(null); }, 10000);
+
+        conn.on('ready', () => {
+            conn.exec(`df -BG "${storagePath}" | tail -1`, (err, stream) => {
+                if (err) { clearTimeout(timeout); conn.end(); return resolve(null); }
+                let stdout = '';
+                stream.on('data', (d) => { stdout += d; });
+                stream.on('close', () => {
+                    clearTimeout(timeout);
+                    conn.end();
+                    // Parse: /dev/sda1  916G  45G  825G   6% /var/www/hls-storage
+                    const parts = stdout.trim().split(/\s+/);
+                    if (parts.length >= 5) {
+                        resolve({
+                            total: parts[1],
+                            used: parts[2],
+                            available: parts[3],
+                            percent: parts[4],
+                        });
+                    } else {
+                        resolve(null);
+                    }
+                });
+            });
+        });
+
+        conn.on('error', () => { clearTimeout(timeout); resolve(null); });
+
+        conn.connect({
+            host: serverInfo.ip,
+            port: serverInfo.port || 22,
+            username: serverInfo.username,
+            password: serverInfo.password,
+            readyTimeout: 8000,
+        });
+    });
+}
+
+module.exports = { uploadHlsToServer, testConnection, deleteVideoFromStorage, getDiskUsage };

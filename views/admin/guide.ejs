@@ -183,6 +183,7 @@
     <button class="guide-tab" onclick="switchTab('cdn')">☁️ CDN</button>
     <button class="guide-tab" onclick="switchTab('deploy')">🚀 Deploy</button>
     <button class="guide-tab" onclick="switchTab('api')">🔌 API Reference</button>
+    <button class="guide-tab" onclick="switchTab('signed-url')">🔒 Signed URL</button>
   </div>
 
   <!-- ─── TAB: OVERVIEW ─── -->
@@ -1162,6 +1163,109 @@ GET /api/v1/videos?<span class="key">token</span>=<span class="string">YOUR_API_
       </div>
       <% } %>
     </div>
+  </div>
+
+  <!-- ─── TAB: SIGNED URL ─── -->
+  <div id="tab-signed-url" class="guide-section">
+    <h2 class="section-title">🔒 Cấu hình Signed URL (Chống Hotlink)</h2>
+
+    <div class="info-box">
+      <strong>Mục đích:</strong> Bảo vệ link HLS khỏi bị người khác lấy chèn vào website họ, gây lãng phí băng thông.<br>
+      Mỗi URL m3u8 sẽ kèm token + thời hạn. Hết hạn → nginx trả 403/410.
+    </div>
+
+    <div class="step-row">
+      <span class="step-num">1</span>
+      <span><strong>Bật Signed URL trên app server</strong></span>
+    </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;padding-left:30px;">
+      Vào <a href="/admin/settings" style="color:var(--accent);">Cài đặt</a> → phần <strong>Signed URL</strong> → nhấn 🔄 Tạo secret key → chọn TTL → Lưu.
+    </p>
+
+    <div class="step-row">
+      <span class="step-num">2</span>
+      <span><strong>Cấu hình nginx trên Storage Server</strong></span>
+    </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;padding-left:30px;">
+      Mở config nginx và thêm <code>secure_link</code> vào <code>location /hls/</code>:
+    </p>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># /etc/nginx/sites-available/hls-storage</span>
+
+server {
+    listen 80;
+    server_name st1.ahay.stream;
+    root /var/www/hls-storage;
+
+    <span class="comment"># HLS files - Signed URL protection</span>
+    location /hls/ {
+        <span class="key">secure_link</span> $arg_token,$arg_expires;
+        <span class="key">secure_link_md5</span> <span class="string">"$arg_expires$uri YOUR_SECRET_KEY"</span>;
+
+        <span class="comment"># Token không hợp lệ → 403</span>
+        if ($secure_link = "") {
+            return 403;
+        }
+        <span class="comment"># Token hết hạn → 410 Gone</span>
+        if ($secure_link = "0") {
+            return 410;
+        }
+
+        <span class="comment"># CORS headers</span>
+        add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Methods 'GET, OPTIONS';
+        add_header Access-Control-Allow-Headers 'Range';
+        add_header Cache-Control "public, max-age=31536000";
+
+        types {
+            application/vnd.apple.mpegurl m3u8;
+            video/mp2t ts;
+        }
+    }
+
+    <span class="comment"># Thumbnails - không cần bảo vệ</span>
+    location /thumbnails/ {
+        add_header Access-Control-Allow-Origin *;
+        add_header Cache-Control "public, max-age=86400";
+    }
+}</pre>
+
+    <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:13px;">
+      <strong style="color:#ef4444;">⚠️ Quan trọng:</strong>
+      <span style="color:var(--text-secondary);">Thay <code>YOUR_SECRET_KEY</code> bằng đúng secret key đã tạo trong Cài đặt. Hai bên phải giống nhau!</span>
+    </div>
+
+    <div class="step-row">
+      <span class="step-num">3</span>
+      <span><strong>Kiểm tra nginx và reload</strong></span>
+    </div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Kiểm tra config</span>
+sudo nginx -t
+
+<span class="comment"># Reload nginx</span>
+sudo systemctl reload nginx</pre>
+
+    <div class="step-row">
+      <span class="step-num">4</span>
+      <span><strong>Test bằng curl</strong></span>
+    </div>
+    <pre class="code-block"><button class="copy-code-btn" onclick="copyCode(this)">Copy</button><span class="comment"># Không có token → 403</span>
+curl -I https://st1.ahay.stream/hls/24/master.m3u8
+
+<span class="comment"># Có token hợp lệ → 200</span>
+curl -I "https://st1.ahay.stream/hls/24/master.m3u8?token=xxx&expires=9999999999"</pre>
+
+    <h3 style="margin-top:24px;color:var(--text-primary);">❓ Troubleshooting</h3>
+    <table class="param-table">
+      <thead>
+        <tr><th>Vấn đề</th><th>Nguyên nhân</th><th>Giải pháp</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Luôn trả 403</td><td>Secret key không khớp</td><td>Kiểm tra secret key trong Cài đặt và nginx config phải giống nhau</td></tr>
+        <tr><td>410 Gone</td><td>Token hết hạn</td><td>Tăng TTL trong Cài đặt hoặc reload lại trang embed</td></tr>
+        <tr><td>Video vẫn phát khi copy URL</td><td>Nginx chưa reload</td><td>Chạy <code>sudo systemctl reload nginx</code></td></tr>
+        <tr><td>Lỗi "unknown directive secure_link"</td><td>Thiếu module</td><td><code>sudo apt install libnginx-mod-http-secure-link</code></td></tr>
+      </tbody>
+    </table>
   </div>
 </div>
 

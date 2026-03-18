@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
-const { getDb } = require('../database');
+const { getDb, getSetting } = require('../database');
+const { signUrl } = require('../services/signedUrl');
 const { pingViewer } = require('../services/viewers');
 const { proxyFetch, allowDomain } = require('../services/hlsProxy');
 
@@ -37,7 +38,10 @@ router.get('/embed/:videoId', (req, res) => {
         });
     }
 
-    const m3u8Url = video.m3u8_url;
+    // Sign URL nếu có secret key
+    const secret = getSetting('signed_url_secret', '');
+    const ttlHours = parseInt(getSetting('signed_url_ttl', '4'), 10);
+    const m3u8Url = secret ? signUrl(video.m3u8_url, secret, ttlHours * 3600) : video.m3u8_url;
 
     res.render('user/player', {
         title: video.title,
@@ -62,7 +66,10 @@ router.get('/play', (req, res) => {
         });
     }
 
-    const m3u8Url = url;
+    // Sign URL nếu có secret key
+    const secret = getSetting('signed_url_secret', '');
+    const ttlHours = parseInt(getSetting('signed_url_ttl', '4'), 10);
+    const m3u8Url = secret ? signUrl(url, secret, ttlHours * 3600) : url;
 
     res.render('user/player', {
         title: 'HLS Player',

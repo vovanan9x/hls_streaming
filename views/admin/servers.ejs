@@ -43,6 +43,7 @@
             <th>Kết nối</th>
             <th>Storage Path</th>
             <th>Trạng thái</th>
+            <th>Dung lượng</th>
             <th>Kiểm tra lần cuối</th>
             <th>Hành động</th>
           </tr>
@@ -82,6 +83,9 @@
               <% } else { %>
                 <span class="badge badge-unknown status-badge" id="status-<%= s.id %>" data-status="unknown"><span class="badge-dot"></span>Unknown</span>
               <% } %>
+            </td>
+            <td id="disk-<%= s.id %>" style="font-size:12px;color:var(--text-muted);white-space:nowrap;">
+              <span style="color:var(--text-muted);">—</span>
             </td>
             <td class="last-checked" id="checked-<%= s.id %>" style="color:var(--text-muted);font-size:12px;white-space:nowrap;">
               <%= s.last_checked || 'Chưa kiểm tra' %>
@@ -177,6 +181,24 @@
     }
   }
 
+  function renderDisk(id, disk) {
+    var el = document.getElementById('disk-' + id);
+    if (!el || !disk) return;
+    var pct = parseInt(disk.percent) || 0;
+    var color = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#22c55e';
+    el.innerHTML =
+      '<div style="min-width:120px;">' +
+        '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">' +
+          '<span style="color:' + color + ';font-weight:600;">' + disk.used + '/' + disk.total + '</span>' +
+          '<span style="color:' + color + ';">' + disk.percent + '</span>' +
+        '</div>' +
+        '<div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;">' +
+          '<div style="height:4px;background:' + color + ';border-radius:2px;width:' + pct + '%;transition:width 0.3s;"></div>' +
+        '</div>' +
+        '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Trống: ' + disk.available + '</div>' +
+      '</div>';
+  }
+
   function pingServer(id, btn) {
     if (btn) {
       btn.classList.add('loading');
@@ -187,6 +209,7 @@
       .then(function (data) {
         if (btn) { btn.classList.remove('loading'); btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>'; }
         updateStatusBadge(id, data.status);
+        renderDisk(id, data.disk);
         var checked = document.getElementById('checked-' + id);
         if (checked && data.last_checked) checked.textContent = data.last_checked;
         showToast(data.ok ? 'success' : 'error', data.message);
@@ -223,6 +246,7 @@
       .then(function (data) {
         if (btn) { btn.classList.remove('loading'); btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>'; }
         updateStatusBadge(id, data.status);
+        renderDisk(id, data.disk);
         var checked = document.getElementById('checked-' + id);
         if (checked && data.last_checked) checked.textContent = data.last_checked;
         if (done) done();
@@ -251,6 +275,11 @@
   document.getElementById('nginx-modal').addEventListener('click', function (e) {
     if (e.target === this) this.classList.remove('open');
   });
+
+  // Tự động ping tất cả server khi trang load
+  if (document.querySelectorAll('.ping-btn').length > 0) {
+    pingAll();
+  }
 </script>
 
 <%- include('../partials/footer') %>
