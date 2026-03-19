@@ -611,6 +611,54 @@
     if (prev) prev.classList.remove('active');
   };
 })();
+
+// ── Remember form selections via localStorage ──
+(function () {
+  var KEY = 'upload_prefs';
+  function load() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } }
+  function save(prefs) { localStorage.setItem(KEY, JSON.stringify(prefs)); }
+
+  // Restore saved values on page load
+  var prefs = load();
+  var serverSel = document.getElementById('server-select');
+  if (prefs.server && serverSel) {
+    var opt = serverSel.querySelector('option[value="' + prefs.server + '"]');
+    if (opt) serverSel.value = prefs.server;
+  }
+  if (prefs.qualities) {
+    document.querySelectorAll('.quality-cb').forEach(function (cb) {
+      cb.checked = prefs.qualities.indexOf(cb.value) !== -1;
+    });
+  }
+  if (prefs.visibility) {
+    var vr = document.querySelector('input[name="visibility"][value="' + prefs.visibility + '"]');
+    if (vr) vr.checked = true;
+  }
+  if (prefs.thumb_mode) {
+    var tr = document.querySelector('input[name="thumb_mode"][value="' + prefs.thumb_mode + '"]');
+    if (tr) { tr.checked = true; tr.dispatchEvent(new Event('change', { bubbles: true })); }
+  }
+
+  // Save on change
+  function listen() {
+    var p = load();
+    if (serverSel) serverSel.addEventListener('change', function () { p = load(); p.server = this.value; save(p); });
+    document.querySelectorAll('.quality-cb').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        p = load();
+        p.qualities = Array.from(document.querySelectorAll('.quality-cb:checked')).map(function (c) { return c.value; });
+        save(p);
+      });
+    });
+    document.querySelectorAll('input[name="visibility"]').forEach(function (r) {
+      r.addEventListener('change', function () { p = load(); p.visibility = this.value; save(p); });
+    });
+    document.querySelectorAll('input[name="thumb_mode"]').forEach(function (r) {
+      r.addEventListener('change', function () { p = load(); p.thumb_mode = this.value; save(p); });
+    });
+  }
+  listen();
+})();
 </script>
 
 <%- include('../partials/footer') %>

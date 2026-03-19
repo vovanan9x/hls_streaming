@@ -235,12 +235,14 @@ router.post('/upload', requireUploader, (req, res) => {
             const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) as max_order FROM videos').get();
 
             let qualities = req.body.qualities;
+            console.log(`[Upload] Raw qualities from form: ${JSON.stringify(req.body.qualities)} (type: ${typeof req.body.qualities})`);
             if (!qualities) qualities = ['sd'];
             if (!Array.isArray(qualities)) qualities = [qualities];
             const validQualities = ['sd', 'hd'];
             qualities = qualities.filter(q => validQualities.includes(q));
             if (qualities.length === 0) qualities = ['sd'];
             const qualitiesJson = JSON.stringify(qualities);
+            console.log(`[Upload] Final qualities: ${qualitiesJson}`);
 
             const result = db.prepare(`
         INSERT INTO videos (title, description, video_file, server_id, uploaded_by, status, qualities, visibility, sort_order)
@@ -250,6 +252,7 @@ router.post('/upload', requireUploader, (req, res) => {
             const videoId = result.lastInsertRowid;
             // Pass sourceUrl for remote/gdrive so worker can download directly
             const sourceUrl = (upload_type === 'remote' && remote_url) ? remote_url : null;
+            console.log(`[Upload] videoId=${videoId} qualities=${qualitiesJson} sourceUrl=${sourceUrl ? 'yes' : 'no'}`);
             const queuePos = encodeQueue.push({ videoId, videoFilePath, videoFileName, autoThumb: thumb_mode !== 'upload', qualities, sourceUrl });
 
             const queueMsg = queuePos === 0 && !encodeQueue.running

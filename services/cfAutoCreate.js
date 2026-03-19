@@ -99,7 +99,14 @@ async function getPuppeteer() {
     try {
         return require('puppeteer');
     } catch {
-        return require('puppeteer-core');
+        try {
+            return require('puppeteer-core');
+        } catch {
+            throw new Error(
+                'Puppeteer chưa được cài đặt! Chạy: npm install puppeteer-core\n' +
+                'Hoặc: npm install puppeteer (sẽ kèm Chromium, ~300MB)'
+            );
+        }
     }
 }
 
