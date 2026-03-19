@@ -184,8 +184,18 @@ apiRouter.get('/videos/:id/stream', (req, res) => {
     res.redirect(url);
 });
 
+// Normalize qualities: chấp nhận cả ['sd','hd'] và ['720p','1080p',...]
+function normalizeQualities(raw) {
+    const VALID = ['sd', 'hd', '360p', '480p', '720p', '1080p'];
+    if (!raw) return ['sd'];
+    const arr = Array.isArray(raw) ? raw : [raw];
+    const filtered = arr.filter(q => VALID.includes(q));
+    return filtered.length > 0 ? filtered : ['sd'];
+}
+
 // POST /api/v1/upload/url — Upload từ URL trực tiếp (MP4, MKV, ...)
-apiRouter.post('/upload/url', async (req, res) => {
+// Non-blocking: trả response ngay, worker tự tải file từ sourceUrl
+apiRouter.post('/upload/url', (req, res) => {
     const db = require('./database').getDb();
     const { url, title, description, server_id, qualities, visibility, folder_id } = req.body;
     if (!url) return res.status(400).json({ error: 'Thiếu tham số: url' });
@@ -196,24 +206,27 @@ apiRouter.post('/upload/url', async (req, res) => {
     if (!server) return res.status(400).json({ error: 'server_id không hợp lệ' });
 
     try {
-        const { downloadRemoteFile } = require('./services/upload');
         const { encodeQueue } = require('./services/queue');
-        const result = await downloadRemoteFile(url, 'video.mp4');
-        const q = qualities ? (Array.isArray(qualities) ? qualities : [qualities]) : ['720p'];
+        const q = normalizeQualities(qualities);
         const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM videos').get().m;
-        const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order) VALUES (?,?,?,?,?,'queued',?,?,?)`);
-        const row = ins.run(title, description || '', result.fileName, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
-        encodeQueue.push({ videoId: row.lastInsertRowid, videoFilePath: result.filePath, videoFileName: result.fileName, autoThumb: true, qualities: q });
-        res.json({ ok: true, video_id: row.lastInsertRowid, status: 'queued', message: 'Video đã được thêm vào hàng đợi xử lý.' });
+        // Lưu folder_id nếu có
+        const folderId = folder_id ? parseInt(folder_id) || null : null;
+        const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order,folder_id) VALUES (?,?,?,?,?,'queued',?,?,?,?)`);
+        const row = ins.run(title, description || '', '', server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1, folderId);
+        const videoId = row.lastInsertRowid;
+        // Dispatch sourceUrl: worker sẽ tự tải file (không blocking)
+        encodeQueue.push({ videoId, videoFilePath: null, videoFileName: null, autoThumb: true, qualities: q, sourceUrl: url });
+        res.json({ ok: true, video_id: videoId, status: 'queued', message: 'Video đã được thêm vào hàng đợi xử lý.' });
     } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
     }
 });
 
 // POST /api/v1/upload/drive — Upload từ Google Drive URL
-apiRouter.post('/upload/drive', async (req, res) => {
+// Non-blocking: trả response ngay, worker tự tải file từ sourceUrl
+apiRouter.post('/upload/drive', (req, res) => {
     const db = require('./database').getDb();
-    const { drive_url, title, description, server_id, qualities, visibility } = req.body;
+    const { drive_url, title, description, server_id, qualities, visibility, folder_id } = req.body;
     if (!drive_url) return res.status(400).json({ error: 'Thiếu tham số: drive_url' });
     if (!title) return res.status(400).json({ error: 'Thiếu tham số: title' });
     if (!server_id) return res.status(400).json({ error: 'Thiếu tham số: server_id' });
@@ -221,26 +234,26 @@ apiRouter.post('/upload/drive', async (req, res) => {
     const server = db.prepare('SELECT id FROM servers WHERE id=? AND is_active=1').get(server_id);
     if (!server) return res.status(400).json({ error: 'server_id không hợp lệ' });
 
-    // Chuyển link Drive sang link download trực tiếp
-    let directUrl = drive_url;
+    // Validate và extract Drive file ID
     const driveMatch = drive_url.match(/(?:\/d\/|id=)([a-zA-Z0-9_-]{25,})/);
-    if (driveMatch) {
-        const fileId = driveMatch[1];
-        directUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
-    } else {
+    if (!driveMatch) {
         return res.status(400).json({ error: 'drive_url không hợp lệ. Phải là link chia sẻ Google Drive.' });
     }
+    const fileId = driveMatch[1];
+    const sourceUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
 
     try {
-        const { downloadRemoteFile } = require('./services/upload');
         const { encodeQueue } = require('./services/queue');
-        const result = await downloadRemoteFile(directUrl, 'drive-video.mp4');
-        const q = qualities ? (Array.isArray(qualities) ? qualities : [qualities]) : ['720p'];
+        const q = normalizeQualities(qualities);
         const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM videos').get().m;
-        const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order) VALUES (?,?,?,?,?,'queued',?,?,?)`);
-        const row = ins.run(title, description || '', result.fileName, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
-        encodeQueue.push({ videoId: row.lastInsertRowid, videoFilePath: result.filePath, videoFileName: result.fileName, autoThumb: true, qualities: q });
-        res.json({ ok: true, video_id: row.lastInsertRowid, status: 'queued', message: 'Video từ Google Drive đã được thêm vào hàng đợi.' });
+        // Lưu folder_id nếu có
+        const folderId = folder_id ? parseInt(folder_id) || null : null;
+        const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order,folder_id) VALUES (?,?,?,?,?,'queued',?,?,?,?)`);
+        const row = ins.run(title, description || '', '', server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1, folderId);
+        const videoId = row.lastInsertRowid;
+        // Dispatch sourceUrl: worker sẽ tự tải file từ Drive (không blocking)
+        encodeQueue.push({ videoId, videoFilePath: null, videoFileName: null, autoThumb: true, qualities: q, sourceUrl });
+        res.json({ ok: true, video_id: videoId, status: 'queued', message: 'Video từ Google Drive đã được thêm vào hàng đợi.' });
     } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
     }

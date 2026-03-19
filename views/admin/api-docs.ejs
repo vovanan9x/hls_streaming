@@ -401,12 +401,17 @@ curl -H "<span class="key">Authorization</span>: Bearer YOUR_TOKEN" \
                     <tr>
                         <td>qualities <span class="optional-tag">tuỳ chọn</span></td>
                         <td>array</td>
-                        <td>Chất lượng render, vd: ["720p","1080p"]. Mặc định: ["720p"]</td>
+                        <td>Chất lượng render. Tương đối: <code>["sd"]</code>, <code>["hd"]</code>, <code>["sd","hd"]</code>. Cố định: <code>["720p"]</code>, <code>["1080p"]</code>. Mặc định: <code>["sd"]</code></td>
                     </tr>
                     <tr>
                         <td>visibility <span class="optional-tag">tuỳ chọn</span></td>
                         <td>string</td>
                         <td>"public" hoặc "private". Mặc định: "public"</td>
+                    </tr>
+                    <tr>
+                        <td>folder_id <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>number</td>
+                        <td>ID thư mục để phân loại video</td>
                     </tr>
                 </tbody>
             </table>
@@ -418,7 +423,8 @@ curl -X POST <span class="string">http://localhost:3000/api/v1/upload/url</span>
     "<span class="key">url</span>": "<span class="string">https://example.com/video.mp4</span>",
     "<span class="key">title</span>": "<span class="string">Video từ URL</span>",
     "<span class="key">server_id</span>": 1,
-    "<span class="key">qualities</span>": ["720p", "1080p"]
+    "<span class="key">qualities</span>": ["sd", "hd"],
+    "<span class="key">folder_id</span>": 2
   }'
 
 <span class="comment">// Response</span>
@@ -475,12 +481,17 @@ curl -X POST <span class="string">http://localhost:3000/api/v1/upload/url</span>
                     <tr>
                         <td>qualities <span class="optional-tag">tuỳ chọn</span></td>
                         <td>array</td>
-                        <td>Chất lượng: ["360p","480p","720p","1080p"]</td>
+                        <td>Chất lượng render. Tương đối: <code>["sd"]</code>, <code>["hd"]</code>. Cố định: <code>["720p"]</code>, <code>["1080p"]</code>. Mặc định: <code>["sd"]</code></td>
                     </tr>
                     <tr>
                         <td>visibility <span class="optional-tag">tuỳ chọn</span></td>
                         <td>string</td>
                         <td>"public" hoặc "private"</td>
+                    </tr>
+                    <tr>
+                        <td>folder_id <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>number</td>
+                        <td>ID thư mục để phân loại video</td>
                     </tr>
                 </tbody>
             </table>
@@ -492,7 +503,8 @@ curl -X POST <span class="string">http://localhost:3000/api/v1/upload/drive</spa
     "<span class="key">drive_url</span>": "<span class="string">https://drive.google.com/file/d/1aBcDeFgHiJkLmN/view</span>",
     "<span class="key">title</span>": "<span class="string">Video từ Google Drive</span>",
     "<span class="key">server_id</span>": 1,
-    "<span class="key">qualities</span>": ["720p"]
+    "<span class="key">qualities</span>": ["sd"],
+    "<span class="key">folder_id</span>": 2
   }'
 
 <span class="comment">// Response</span>

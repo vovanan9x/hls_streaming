@@ -363,6 +363,18 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
         }
 
         // ── Fallback: encode local + SFTP ──
+        // Nếu không có file local nhưng có sourceUrl, download trước
+        if (!videoFilePath && sourceUrl) {
+            console.log(`[Process] No local file for video ${videoId}, downloading from sourceUrl for local encode...`);
+            const { downloadRemoteFile } = require('../services/upload');
+            const dlResult = await downloadRemoteFile(sourceUrl, 'video.mp4');
+            videoFilePath = dlResult.filePath;
+            videoFileName = dlResult.fileName;
+        }
+        if (!videoFilePath) {
+            throw new Error(`Video ${videoId}: Không có file để encode và không có sourceUrl.`);
+        }
+
         const localHlsBase = path.join(STORAGE_DIR, 'hls');
         fs.mkdirSync(localHlsBase, { recursive: true });
         let lastPercent = -1;
