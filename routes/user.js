@@ -11,7 +11,29 @@ router.get('/embed/:videoId', (req, res) => {
     const video = db.prepare('SELECT * FROM videos WHERE id = ? AND status = ? AND visibility = ?')
         .get(req.params.videoId, 'ready', 'public');
 
-    if (!video || !video.m3u8_url) {
+    if (!video) {
+        return res.status(404).render('user/player', {
+            title: 'Video không tồn tại',
+            m3u8Url: null,
+            videoTitle: 'Video không tồn tại',
+            videoId: null,
+            videoFile: '',
+            error: 'Video không tồn tại hoặc chưa sẵn sàng.'
+        });
+    }
+
+    // Tính m3u8 URL động qua CDN pool (CF domain → BunnyCDN → cdn_url → IP)
+    // Không dùng video.m3u8_url cứng trong DB để CDN changes có hiệu lực ngay
+    let baseM3u8Url = video.m3u8_url; // fallback nếu không có server info
+    if (video.server_id) {
+        const serverInfo = db.prepare('SELECT * FROM servers WHERE id = ?').get(video.server_id);
+        if (serverInfo) {
+            const { buildM3u8Url } = require('../services/cdnPool');
+            baseM3u8Url = buildM3u8Url(video.server_id, video.id, serverInfo);
+        }
+    }
+
+    if (!baseM3u8Url) {
         return res.status(404).render('user/player', {
             title: 'Video không tồn tại',
             m3u8Url: null,
@@ -25,7 +47,7 @@ router.get('/embed/:videoId', (req, res) => {
     // Sign URL nếu có secret key
     const secret = getSetting('signed_url_secret', '');
     const ttlHours = parseInt(getSetting('signed_url_ttl', '4'), 10);
-    const m3u8Url = secret ? signUrl(video.m3u8_url, secret, ttlHours * 3600) : video.m3u8_url;
+    const m3u8Url = secret ? signUrl(baseM3u8Url, secret, ttlHours * 3600) : baseM3u8Url;
 
     // Cache embed page 30s (stale-while-revalidate cho CDN edge)
     // Không cache nếu có signed URL (token thay đổi mỗi request)
@@ -43,6 +65,7 @@ router.get('/embed/:videoId', (req, res) => {
         error: null
     });
 });
+
 
 // GET /play - Play video by m3u8 URL query param
 router.get('/play', (req, res) => {
