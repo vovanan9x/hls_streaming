@@ -413,6 +413,11 @@ curl -H "<span class="key">Authorization</span>: Bearer YOUR_TOKEN" \
                         <td>number</td>
                         <td>ID thư mục để phân loại video</td>
                     </tr>
+                    <tr>
+                        <td>idah <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>string</td>
+                        <td>Mã IDAH riêng để tra cứu video (duy nhất)</td>
+                    </tr>
                 </tbody>
             </table>
             <pre class="code-block"><span class="comment">// Ví dụ request</span>
@@ -424,7 +429,8 @@ curl -X POST <span class="string">http://localhost:3000/api/v1/upload/url</span>
     "<span class="key">title</span>": "<span class="string">Video từ URL</span>",
     "<span class="key">server_id</span>": 1,
     "<span class="key">qualities</span>": ["sd", "hd"],
-    "<span class="key">folder_id</span>": 2
+    "<span class="key">folder_id</span>": 2,
+    "<span class="key">idah</span>": "<span class="string">EP001</span>"
   }'
 
 <span class="comment">// Response</span>
@@ -493,6 +499,11 @@ curl -X POST <span class="string">http://localhost:3000/api/v1/upload/url</span>
                         <td>number</td>
                         <td>ID thư mục để phân loại video</td>
                     </tr>
+                    <tr>
+                        <td>idah <span class="optional-tag">tuỳ chọn</span></td>
+                        <td>string</td>
+                        <td>Mã IDAH riêng để tra cứu video (duy nhất)</td>
+                    </tr>
                 </tbody>
             </table>
             <pre class="code-block"><span class="comment">// Ví dụ request</span>
@@ -504,7 +515,8 @@ curl -X POST <span class="string">http://localhost:3000/api/v1/upload/drive</spa
     "<span class="key">title</span>": "<span class="string">Video từ Google Drive</span>",
     "<span class="key">server_id</span>": 1,
     "<span class="key">qualities</span>": ["sd"],
-    "<span class="key">folder_id</span>": 2
+    "<span class="key">folder_id</span>": 2,
+    "<span class="key">idah</span>": "<span class="string">EP001</span>"
   }'
 
 <span class="comment">// Response</span>
