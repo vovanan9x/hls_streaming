@@ -1857,16 +1857,14 @@ router.post('/api/worker/done', (req, res) => {
     const video = db.prepare('SELECT * FROM videos WHERE id=?').get(videoId);
     if (!video) return res.status(404).json({ error: 'Video not found' });
 
-    // Build m3u8 URL từ server config (CDN URL hoặc IP)
+    // Build m3u8 URL qua 2-layer CDN pool (CF → BunnyCDN → legacy cdn_url → IP)
     const serverInfo = db.prepare('SELECT * FROM servers WHERE id=?').get(video.server_id);
     let m3u8Url = '';
     if (serverInfo) {
-        if (serverInfo.cdn_url && serverInfo.cdn_url.trim()) {
-            m3u8Url = `${serverInfo.cdn_url.replace(/\/$/, '')}/hls/${videoId}/master.m3u8`;
-        } else {
-            const base = (serverInfo.storage_path || '/var/hls-storage').replace(/\/$/, '');
-            m3u8Url = `http://${serverInfo.ip}:80${base}/${videoId}/master.m3u8`;
-        }
+        const { buildM3u8Url, getRoutingInfo } = require('../services/cdnPool');
+        m3u8Url = buildM3u8Url(video.server_id, videoId, serverInfo);
+        const routeInfo = getRoutingInfo(video.server_id, videoId, serverInfo);
+        console.log(`[CDNPool] videoId=${videoId} → Layer ${routeInfo.layer} (${routeInfo.type}): ${routeInfo.domain}`);
     }
 
     const iframeUrl = m3u8Url ? `/embed/${videoId}` : '';
@@ -2011,14 +2009,16 @@ router.get('/cdn', requireAdmin, (req, res) => {
 // POST /admin/cdn/add — thêm domain thủ công
 router.post('/cdn/add', requireAdmin, (req, res) => {
     const db = getDb();
-    const { label, domain, server_id, cf_email, cf_api_token, cf_zone_id, note } = req.body;
+    const { label, domain, server_id, cf_email, cf_api_token, cf_zone_id, note, cdn_type } = req.body;
     if (!domain) return res.redirect('/admin/cdn?msg=missing_domain');
+    const validTypes = ['cloudflare', 'bunnycdn'];
+    const domainType = validTypes.includes(cdn_type) ? cdn_type : 'cloudflare';
     try {
         db.prepare(`
-            INSERT INTO cdn_domains (label, domain, server_id, cf_email, cf_api_token, cf_zone_id, is_active, note)
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+            INSERT INTO cdn_domains (label, domain, server_id, cf_email, cf_api_token, cf_zone_id, is_active, note, cdn_type)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
         `).run(label || domain, domain.trim().toLowerCase(), server_id || null,
-            cf_email || '', cf_api_token || '', cf_zone_id || '', note || '');
+            cf_email || '', cf_api_token || '', cf_zone_id || '', note || '', domainType);
         res.redirect('/admin/cdn?msg=added');
     } catch (e) {
         res.redirect('/admin/cdn?msg=duplicate');
@@ -2028,16 +2028,19 @@ router.post('/cdn/add', requireAdmin, (req, res) => {
 // POST /admin/cdn/:id/edit — cập nhật domain (nhập API token, etc.)
 router.post('/cdn/:id/edit', requireAdmin, (req, res) => {
     const db = getDb();
-    const { label, cf_api_token, cf_zone_id, note, server_id } = req.body;
+    const { label, cf_api_token, cf_zone_id, note, server_id, cdn_type } = req.body;
+    const validTypes = ['cloudflare', 'bunnycdn'];
+    const domainType = validTypes.includes(cdn_type) ? cdn_type : null;
     db.prepare(`
         UPDATE cdn_domains
         SET label=COALESCE(NULLIF(?,''),(SELECT label FROM cdn_domains WHERE id=?)),
             cf_api_token=COALESCE(NULLIF(?,''),(SELECT cf_api_token FROM cdn_domains WHERE id=?)),
             cf_zone_id=COALESCE(NULLIF(?,''),(SELECT cf_zone_id FROM cdn_domains WHERE id=?)),
-            note=?, server_id=?
+            note=?, server_id=?,
+            cdn_type=COALESCE(NULLIF(?,''), (SELECT cdn_type FROM cdn_domains WHERE id=?))
         WHERE id=?
     `).run(label, req.params.id, cf_api_token, req.params.id, cf_zone_id, req.params.id,
-        note || '', server_id || null, req.params.id);
+        note || '', server_id || null, domainType, req.params.id, req.params.id);
 
     res.redirect('/admin/cdn?msg=updated');
 });

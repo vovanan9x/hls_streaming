@@ -275,6 +275,13 @@
                                                             </select>
                                                         </div>
                                                         <div class="form-group" style="margin-bottom:10px">
+                                                            <label>⚡ Loại CDN</label>
+                                                            <select name="cdn_type">
+                                                                <option value="cloudflare">☁️ Cloudflare (Layer 1 - Primary)</option>
+                                                                <option value="bunnycdn">🐰 BunnyCDN (Layer 2 - Fallback)</option>
+                                                            </select>
+                                                        </div>
+                                                        <div class="form-group" style="margin-bottom:10px">
                                                             <label>CF Email (tùy chọn)</label>
                                                             <input type="text" name="cf_email"
                                                                 placeholder="abc@mail.tm">
@@ -367,6 +374,7 @@ location ~* ^/hls/.+\.m3u8$ {
                                                             <thead>
                                                                 <tr>
                                                                     <th>Domain</th>
+                                                                    <th>Layer</th>
                                                                     <th>Server</th>
                                                                     <th>CF Email</th>
                                                                     <th>API Token</th>
@@ -384,6 +392,13 @@ location ~* ^/hls/.+\.m3u8$ {
                                                                                 style="color:var(--primary);text-decoration:none;font-weight:500;">
                                                                                 <%= d.domain %>
                                                                             </a>
+                                                                        </td>
+                                                                        <td>
+                                                                            <% if(d.cdn_type === 'bunnycdn') { %>
+                                                                                <span style="background:#f9731620;color:#fb923c;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;">🐰 L2 Bunny</span>
+                                                                            <% } else { %>
+                                                                                <span style="background:#f97f1620;color:#60a5fa;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;">☁️ L1 CF</span>
+                                                                            <% } %>
                                                                         </td>
                                                                         <td
                                                                             style="font-size:12px;color:var(--text-secondary)">
@@ -451,6 +466,13 @@ location ~* ^/hls/.+\.m3u8$ {
                                                                                         <input name="label"
                                                                                             value="<%= d.label %>"
                                                                                             placeholder="Label">
+                                                                                    </div>
+                                                                                    <div class="form-group">
+                                                                                        <label>⚡ Loại CDN</label>
+                                                                                        <select name="cdn_type">
+                                                                                            <option value="cloudflare" <%=d.cdn_type==='cloudflare'||!d.cdn_type?'selected':''%>>☁️ Cloudflare (L1 Primary)</option>
+                                                                                            <option value="bunnycdn" <%=d.cdn_type==='bunnycdn'?'selected':''%>>🐰 BunnyCDN (L2 Fallback)</option>
+                                                                                        </select>
                                                                                     </div>
                                                                                     <div class="form-group">
                                                                                         <label>Server</label>
