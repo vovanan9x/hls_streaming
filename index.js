@@ -197,7 +197,7 @@ function normalizeQualities(raw) {
 // Non-blocking: trả response ngay, worker tự tải file từ sourceUrl
 apiRouter.post('/upload/url', (req, res) => {
     const db = require('./database').getDb();
-    const { url, title, description, server_id, qualities, visibility, folder_id, idah } = req.body;
+    const { url, title, description, server_id, qualities, visibility } = req.body;
     if (!url) return res.status(400).json({ error: 'Thiếu tham số: url' });
     if (!title) return res.status(400).json({ error: 'Thiếu tham số: title' });
     if (!server_id) return res.status(400).json({ error: 'Thiếu tham số: server_id' });
@@ -230,7 +230,7 @@ apiRouter.post('/upload/url', (req, res) => {
 // Non-blocking: trả response ngay, worker tự tải file từ sourceUrl
 apiRouter.post('/upload/drive', (req, res) => {
     const db = require('./database').getDb();
-    const { drive_url, title, description, server_id, qualities, visibility, folder_id, idah } = req.body;
+    const { drive_url, title, description, server_id, qualities, visibility } = req.body;
     if (!drive_url) return res.status(400).json({ error: 'Thiếu tham số: drive_url' });
     if (!title) return res.status(400).json({ error: 'Thiếu tham số: title' });
     if (!server_id) return res.status(400).json({ error: 'Thiếu tham số: server_id' });
