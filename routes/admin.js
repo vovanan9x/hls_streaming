@@ -1048,10 +1048,8 @@ router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
     }
     const corsOriginValue = hasRestriction ? '$cors_allow_origin' : '"*"';
 
-    // valid_referers directive
-    const validReferers = hasRestriction
-        ? `\n        # Restrict hotlink to allowed domains\n        valid_referers none blocked ${embedDomains.map(d => '~' + d.replace(/\./g, '\\.')).join(' ')};\n        if ($invalid_referer) { return 403; }\n`
-        : '';
+    // Hotlink protection via CORS map (valid_referers removed - not needed with CORS)
+    const validReferers = '';
 
     // CORS add_header block (always = send even on 4xx)
     const cors = `
