@@ -1069,11 +1069,25 @@ router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
             return 204;
         }`;
 
+
+    // Rate limiting zones (anti-leeching)
+    const reqRate     = s.req_rate     || '10r/s'; // max 10 requests/s per IP
+    const connLimit   = s.conn_limit   || 5;       // max 5 connections per IP
+    const rateLimitZones = `# Rate limiting zones (paste this in nginx.conf http block if not already there)
+# limit_req_zone  \$binary_remote_addr zone=hls_req:10m rate=${reqRate};
+# limit_conn_zone \$binary_remote_addr zone=hls_conn:10m;
+`;
+
+    const rateLimitDirectives = `
+        limit_req  zone=hls_req burst=30 nodelay;
+        limit_conn zone=hls_conn ${connLimit};`;
+
     const segmentBlock = usePng ? `
     # TS segments served as .png (camouflage)
     location ~* ^/hls/([^/]+)/([^/]+)/(.+)\\.png$ {
 ${preflight}
         try_files /hls/$1/$2/$3.ts =404;
+${rateLimitDirectives}
         types { }
         default_type image/png;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
@@ -1087,6 +1101,7 @@ ${cors}
 ${preflight}
         types { }
         default_type video/mp2t;
+${rateLimitDirectives}
         add_header Cache-Control "public, max-age=31536000, immutable" always;
 ${cors}
         access_log off;
@@ -1105,12 +1120,14 @@ ${cors}
 ${preflight}
 ${validReferers}        types { }
         default_type application/vnd.apple.mpegurl;
+${rateLimitDirectives}
 ${m3u8SubFilter}
         add_header Cache-Control "no-cache, no-store, must-revalidate" always;
 ${cors}
     }`;
 
-    const config = `${originMapBlock}server {
+
+    const config = `${originMapBlock}${rateLimitZones}server {
     listen 80;
     server_name _;
 
