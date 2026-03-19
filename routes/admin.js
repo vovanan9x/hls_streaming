@@ -1027,30 +1027,49 @@ router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
     const s = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
     if (!s) return res.status(404).send('Server không tồn tại');
 
-    const bwLimit = s.bandwidth_limit || '1m';        // KB/s, đọc từ DB nếu có
-    const config = `server {
-    listen 80;
-    server_name _;
+    const { getSetting } = require('../database');
+    const bwLimit = s.bandwidth_limit || '1m';
+    const usePng = s.use_png_camouflage !== 0;
+    const signedSecret = getSetting('signed_url_secret', '');
 
-    root ${s.storage_path || '/var/hls-storage'};
+    // Directives xác thực Signed URL — chèn vào M3U8 block nếu đã cấu hình secret
+    // Token format khớp với services/signedUrl.js: md5($arg_expires$uri " " SECRET) → base64url
+    const secureLink = signedSecret ? `
+        # Signed URL validation
+        secure_link $arg_token,$arg_expires;
+        secure_link_md5 "$arg_expires$uri ${signedSecret}";
+        if ($secure_link = "")  { return 403; }  # token sai hoặc không có
+        if ($secure_link = "0") { return 410; }  # token hết hạn
+` : '';
 
+    // Block phục vụ video segments — khác nhau tùy chế độ camouflage
+    const segmentBlock = usePng ? `
     # .png URLs → .ts segments (CF Worker sẽ sửa Content-Type)
-    location ~* ^/hls/([^/]+)/([^/]+)/(.+)\\.png$ {
+    location ~* ^/hls/([^/]+)/([^/]+)/(.+)\.png$ {
         try_files /hls/$1/$2/$3.ts =404;
         types { }
         default_type image/png;
         add_header Cache-Control "public, max-age=31536000, immutable";
         add_header Access-Control-Allow-Origin "*";
         access_log off;
-
-        # Bandwidth limit: truyền nhanh 2MB đầu (buffer segment), sau đó throttle
-        # Chỉ giới hạn khi Cloudflare/BunnyCDN cache MISS kéo từ origin
         limit_rate_after 2m;
         limit_rate ${bwLimit};
-    }
+    }` : `
+    # .ts segments — serve trực tiếp (không camouflage)
+    location ~* \.ts$ {
+        types { }
+        default_type video/mp2t;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Access-Control-Allow-Origin "*";
+        access_log off;
+        limit_rate_after 2m;
+        limit_rate ${bwLimit};
+    }`;
 
-    # M3U8 playlists — thay .ts → .png, no-cache
-    location ~* \\.m3u8$ {
+    // Block M3U8 — sub_filter + secure_link nếu có secret
+    const m3u8Block = usePng ? `
+    # M3U8 playlists — thay .ts → .png trong nội dung playlist
+    location ~* \.m3u8$ {
         types { }
         default_type application/vnd.apple.mpegurl;
         sub_filter '.ts' '.png';
@@ -1058,7 +1077,22 @@ router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
         sub_filter_types application/vnd.apple.mpegurl text/plain;
         add_header Cache-Control "no-cache, no-store, must-revalidate";
         add_header Access-Control-Allow-Origin "*";
-    }
+${secureLink}    }` : `
+    # M3U8 playlists — serve nguyên bản (không thay đuôi)
+    location ~* \.m3u8$ {
+        types { }
+        default_type application/vnd.apple.mpegurl;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Access-Control-Allow-Origin "*";
+${secureLink}    }`;
+
+    const config = `server {
+    listen 80;
+    server_name _;
+
+    root ${s.storage_path || '/var/hls-storage'};
+${segmentBlock}
+${m3u8Block}
 
     # Health check
     location /ping {
@@ -1080,7 +1114,8 @@ router.get('/servers/add', requireAdmin, (req, res) => {
 
 router.post('/servers/add', requireAdmin, async (req, res) => {
     const db = getDb();
-    const { label, ip, port, username, password, storage_path, cdn_url } = req.body;
+    const { label, ip, port, username, password, storage_path, cdn_url, use_png_camouflage } = req.body;
+    const pngCamouflage = use_png_camouflage === '1' ? 1 : 0;
 
     if (!label) {
         return res.render('admin/server-form', {
@@ -1096,10 +1131,10 @@ router.post('/servers/add', requireAdmin, async (req, res) => {
     }
 
     db.prepare(`
-        INSERT INTO servers (label, server_type, ip, port, username, password, storage_path, cdn_url)
-        VALUES (?, 'sftp', ?, ?, ?, ?, ?, ?)
+        INSERT INTO servers (label, server_type, ip, port, username, password, storage_path, cdn_url, use_png_camouflage)
+        VALUES (?, 'sftp', ?, ?, ?, ?, ?, ?, ?)
     `).run(label, ip || '', parseInt(port) || 22, username || '', password || '',
-        storage_path || '/var/hls-storage', cdn_url || '');
+        storage_path || '/var/hls-storage', cdn_url || '', pngCamouflage);
 
     res.redirect('/admin/servers');
 });
@@ -1113,7 +1148,8 @@ router.get('/servers/:id/edit', requireAdmin, (req, res) => {
 
 router.post('/servers/:id/edit', requireAdmin, async (req, res) => {
     const db = getDb();
-    const { label, ip, port, username, password, storage_path, cdn_url } = req.body;
+    const { label, ip, port, username, password, storage_path, cdn_url, use_png_camouflage } = req.body;
+    const pngCamouflage = use_png_camouflage === '1' ? 1 : 0;
 
     if (!label) {
         const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
@@ -1130,10 +1166,10 @@ router.post('/servers/:id/edit', requireAdmin, async (req, res) => {
     db.prepare(`
         UPDATE servers
         SET label=?, server_type='sftp', ip=?, port=?, username=?, password=?, storage_path=?,
-            cdn_url=?, updated_at=datetime('now','localtime')
+            cdn_url=?, use_png_camouflage=?, updated_at=datetime('now','localtime')
         WHERE id=?
     `).run(label, ip || '', parseInt(port) || 22, username || '', finalPassword || '',
-        storage_path || '/var/hls-storage', cdn_url || '', req.params.id);
+        storage_path || '/var/hls-storage', cdn_url || '', pngCamouflage, req.params.id);
 
     const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
     res.render('admin/server-form', { title: 'Sửa Server', server, error: null, success: 'Cập nhật thành công!' });

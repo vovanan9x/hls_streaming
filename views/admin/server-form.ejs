@@ -88,6 +88,29 @@
     </div>
   </div>
 
+  <!-- Nginx options -->
+  <div class="card" style="margin-top:0;">
+    <div class="card-title" style="margin-bottom:18px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+      </svg>
+      Tùy chọn Nginx
+    </div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;">
+        <input type="hidden" name="use_png_camouflage" value="0">
+        <input type="checkbox" name="use_png_camouflage" id="use_png_camouflage" value="1"
+          style="width:18px;height:18px;cursor:pointer;accent-color:var(--primary);"
+          <%= (server && server.use_png_camouflage == 0) ? '' : 'checked' %>>
+        <span>
+          <strong>Giả mạo đuôi file .ts → .png</strong>
+          <div class="form-hint" style="margin-top:2px;">Nginx serve file <code>.ts</code> nhưng URL trả về có đuôi <code>.png</code> để che giấu định dạng HLS thật. Cloudflare Worker sẽ sửa lại Content-Type phía client. Tắt nếu không cần camouflage.</div>
+        </span>
+      </label>
+    </div>
+  </div>
+
   <div style="display:flex;gap:10px;">
     <button type="submit" class="btn btn-primary" style="padding:11px 28px;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>

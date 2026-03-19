@@ -147,6 +147,8 @@ function initTables() {
     `ALTER TABLE servers ADD COLUMN r2_bucket TEXT DEFAULT ''`,
     `ALTER TABLE servers ADD COLUMN r2_public_url TEXT DEFAULT ''`,
     `ALTER TABLE servers ADD COLUMN cdn_url TEXT DEFAULT ''`,
+    // Nginx camouflage: serve .ts segments dưới URL .png để giấu định dạng thật
+    `ALTER TABLE servers ADD COLUMN use_png_camouflage INTEGER DEFAULT 1`,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (e) { /* already exists */ }
