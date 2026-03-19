@@ -1104,8 +1104,9 @@ router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
 `;
 
     const rateLimitDirectives = `
-        limit_req  zone=hls_req burst=30 nodelay;
-        limit_conn zone=hls_conn ${connLimit};`;
+        # Rate limiting - uncomment sau khi them zone vao nginx.conf http block:
+        # limit_req  zone=hls_req burst=30 nodelay;
+        # limit_conn zone=hls_conn ${connLimit};`;
 
     const segmentBlock = usePng ? `
     # TS segments served as .png (camouflage)

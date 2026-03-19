@@ -570,6 +570,10 @@ async function processJob({ videoId, videoFilePath, videoFileName, qualities, au
                         const remoteThumbDir = `${(serverConfig.storage_path || '/var/hls-storage').replace(/\/$/, '')}/thumbnails`;
                         await sftp2.mkdir(remoteThumbDir, true).catch(() => { /* ok */ });
                         await sftp2.put(localThumb, `${remoteThumbDir}/${thumbnailName}`);
+                        // chmod 644 để nginx (www-data/nginx user) có thể đọc file
+                        await sftp2.chmod(`${remoteThumbDir}/${thumbnailName}`, 0o644).catch(() => {});
+                        // Đảm bảo thư mục thumbnails cũng có quyền đọc
+                        await sftp2.chmod(remoteThumbDir, 0o755).catch(() => {});
                         console.log(`[Worker] Thumbnail SFTP uploaded: ${thumbnailName}`);
                     } finally {
                         await sftp2.end().catch(() => { /* ignore */ });
