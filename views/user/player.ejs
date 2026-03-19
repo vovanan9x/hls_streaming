@@ -435,12 +435,32 @@
     hls.on(Hls.Events.MANIFEST_PARSED, function (_, data) {
       // Build quality options
       quality.innerHTML = '<option value="-1">🔄 Auto</option>';
+
+      // Xếp hạng theo bitrate để gán nhãn khi manifest không có RESOLUTION
+      var RANK_LABELS = ['SD', 'HD', 'FHD', '2K', '4K'];
+      var byBitrate = data.levels
+        .map(function(lv, i) { return { idx: i, bps: lv.bitrate || 0 }; })
+        .sort(function(a, b) { return a.bps - b.bps; });
+      var rankLabel = {};
+      byBitrate.forEach(function(item, rank) {
+        rankLabel[item.idx] = RANK_LABELS[Math.min(rank, RANK_LABELS.length - 1)];
+      });
+
       data.levels.forEach(function (lv, i) {
         var h = lv.height || 0;
-        var tag = h >= 2160 ? '4K' : h >= 1440 ? '2K' : h >= 1080 ? 'FHD' : h >= 720 ? 'HD' : h > 0 ? 'SD' : 'L' + i;
-        var label = h > 0 ? tag + ' · ' + h + 'p' : tag;
+        var tag, suffix;
+        if (h >= 2160)      { tag = '4K';  suffix = ' · ' + h + 'p'; }
+        else if (h >= 1440) { tag = '2K';  suffix = ' · ' + h + 'p'; }
+        else if (h >= 1080) { tag = 'FHD'; suffix = ' · ' + h + 'p'; }
+        else if (h >= 720)  { tag = 'HD';  suffix = ' · ' + h + 'p'; }
+        else if (h > 0)     { tag = 'SD';  suffix = ' · ' + h + 'p'; }
+        else {
+          // Không có height → dùng rank bitrate + hiển thị kbps nếu có
+          tag = rankLabel[i] || ('L' + i);
+          suffix = lv.bitrate ? ' · ' + Math.round(lv.bitrate / 1000) + 'k' : '';
+        }
         var opt = document.createElement('option');
-        opt.value = i; opt.textContent = label;
+        opt.value = i; opt.textContent = tag + suffix;
         quality.appendChild(opt);
       });
       resumeAndPlay();
