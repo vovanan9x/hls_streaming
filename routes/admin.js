@@ -1723,10 +1723,9 @@ router.get('/cdn', requireAdmin, (req, res) => {
         ORDER BY c.created_at DESC
     `).all();
     const servers = db.prepare("SELECT id, label, ip FROM servers WHERE is_active=1 AND server_type='sftp' ORDER BY label").all();
-    const jobs = db.prepare('SELECT * FROM cf_create_jobs ORDER BY created_at DESC LIMIT 20').all();
     res.render('admin/cdn-accounts', {
         title: 'CDN Domains (CF Pool)',
-        domains, servers, jobs,
+        domains, servers,
         msg: req.query.msg || null,
     });
 });
@@ -1749,9 +1748,9 @@ router.post('/cdn/add', requireAdmin, (req, res) => {
 });
 
 // POST /admin/cdn/:id/edit — cập nhật domain (nhập API token, etc.)
-router.post('/cdn/:id/edit', requireAdmin, async (req, res) => {
+router.post('/cdn/:id/edit', requireAdmin, (req, res) => {
     const db = getDb();
-    const { label, cf_api_token, cf_zone_id, note, server_id, hetzner_ip, do_cf_setup } = req.body;
+    const { label, cf_api_token, cf_zone_id, note, server_id } = req.body;
     db.prepare(`
         UPDATE cdn_domains
         SET label=COALESCE(NULLIF(?,''),(SELECT label FROM cdn_domains WHERE id=?)),
@@ -1762,16 +1761,6 @@ router.post('/cdn/:id/edit', requireAdmin, async (req, res) => {
     `).run(label, req.params.id, cf_api_token, req.params.id, cf_zone_id, req.params.id,
         note || '', server_id || null, req.params.id);
 
-    // Nếu có API token mới và muốn thiết lập CF tự động
-    if (do_cf_setup === '1' && cf_api_token && hetzner_ip) {
-        const row = db.prepare('SELECT * FROM cdn_domains WHERE id=?').get(req.params.id);
-        try {
-            const { finalizeCfSetup } = require('../services/cfAutoCreate');
-            await finalizeCfSetup(row.id, cf_api_token, hetzner_ip);
-        } catch (e) {
-            console.error('[CDN edit] finalizeCfSetup error:', e.message);
-        }
-    }
     res.redirect('/admin/cdn?msg=updated');
 });
 
@@ -1817,77 +1806,7 @@ router.post('/api/cdn/:id/test', requireAdmin, async (req, res) => {
     }
 });
 
-// --- SSE auto-create stream ---
-// Map để gửi SSE events tới các client đang chờ
-const sseClients = new Map(); // jobId → res
 
-// GET /admin/cdn/create-stream?jobId=X — SSE stream cho job
-router.get('/cdn/create-stream', requireAdmin, (req, res) => {
-    const jobId = parseInt(req.query.jobId);
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
-
-    sseClients.set(jobId, res);
-    req.on('close', () => sseClients.delete(jobId));
-
-    // Gửi heartbeat mỗi 20s
-    const hb = setInterval(() => res.write(': heartbeat\n\n'), 20000);
-    req.on('close', () => clearInterval(hb));
-});
-
-function sendSse(jobId, event, data) {
-    const client = sseClients.get(jobId);
-    if (client) {
-        client.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    }
-}
-
-// POST /admin/cdn/auto-create — khởi tạo tạo tự động hàng loạt
-router.post('/cdn/auto-create', requireAdmin, async (req, res) => {
-    const db = getDb();
-    const { server_id, hetzner_ip } = req.body;
-    let domains = (req.body.domains || '').split('\n').map(d => d.trim().toLowerCase()).filter(Boolean);
-
-    if (!domains.length) return res.redirect('/admin/cdn?msg=no_domains');
-
-    const { createCloudflareAccount } = require('../services/cfAutoCreate');
-
-    // Trả về ngay với danh sách jobId, browser sẽ subscribe SSE
-    const jobIds = [];
-    for (const domain of domains) {
-        const jobRow = db.prepare(
-            `INSERT INTO cf_create_jobs (domain, server_id, status, log) VALUES (?, ?, 'pending', '[]')`
-        ).run(domain, server_id || null);
-        jobIds.push({ domain, jobId: jobRow.lastInsertRowid });
-    }
-
-    // Chạy bất đồng bộ
-    (async () => {
-        for (const { domain, jobId } of jobIds) {
-            db.prepare(`UPDATE cf_create_jobs SET status='running' WHERE id=?`).run(jobId);
-            sendSse(jobId, 'start', { jobId, domain });
-
-            const onLog = (msg) => {
-                sendSse(jobId, 'log', { jobId, domain, msg });
-            };
-
-            const result = await createCloudflareAccount({
-                domain, hetznerIp: hetzner_ip, serverId: server_id,
-                label: domain, onLog,
-            });
-
-            const finalStatus = result.ok ? (result.status || 'done') : 'failed';
-            db.prepare(`UPDATE cf_create_jobs SET status=? WHERE id=?`).run(finalStatus, jobId);
-            sendSse(jobId, 'done', { jobId, domain, ok: result.ok, status: finalStatus, error: result.error });
-        }
-    })().catch(e => console.error('[AutoCreate batch error]', e.message));
-
-    // Redirect về trang CDN với danh sách jobIds để browser có thể subscribe SSE
-    const ids = jobIds.map(j => j.jobId).join(',');
-    res.redirect(`/admin/cdn?msg=auto_create_started&jobs=${ids}`);
-});
 // =============================
 // ENCODE WORKERS (admin only)
 // =============================

@@ -248,49 +248,6 @@
                             <% if(msg==='duplicate' ) { %>
                                 <div class="alert alert-error">❌ Domain đã tồn tại.</div>
                                 <% } %>
-                                    <% if(msg==='auto_create_started' ) { %>
-                                        <div class="alert alert-info" id="auto-create-banner">⚙️ Đang tạo tài khoản CF
-                                            tự động... theo dõi log bên dưới.</div>
-                                        <% } %>
-
-                                            <!-- ─── Panel 1: Auto-create ─── -->
-                                            <div class="cdn-card" style="margin-bottom:20px;">
-                                                <h3>🤖 Tạo CF Accounts Tự Động (Puppeteer)</h3>
-                                                <form action="/admin/cdn/auto-create" method="POST">
-                                                    <div class="form-row">
-                                                        <div class="form-group" style="flex:2">
-                                                            <label>Danh sách domains (mỗi dòng 1 domain)</label>
-                                                            <textarea name="domains" rows="4"
-                                                                placeholder="cdn01.yourdomain.com&#10;cdn02.yourdomain.com&#10;cdn03.yourdomain.com"></textarea>
-                                                        </div>
-                                                        <div class="form-group">
-                                                            <label>Origin Server (Hetzner)</label>
-                                                            <select name="server_id">
-                                                                <option value="">-- Chọn server --</option>
-                                                                <% servers.forEach(s=> { %>
-                                                                    <option value="<%= s.id %>">
-                                                                        <%= s.label %> (<%= s.ip %>)
-                                                                    </option>
-                                                                    <% }) %>
-                                                            </select>
-                                                        </div>
-                                                        <div class="form-group">
-                                                            <label>Hetzner Origin IP</label>
-                                                            <input type="text" name="hetzner_ip" placeholder="1.2.3.4"
-                                                                id="auto-ip">
-                                                        </div>
-                                                    </div>
-                                                    <button type="submit" class="btn btn-primary"
-                                                        style="margin-top:4px;">
-                                                        🚀 Bắt Đầu Tạo Tự Động
-                                                    </button>
-                                                    <p
-                                                        style="margin:8px 0 0;font-size:12px;color:var(--text-secondary);">
-                                                        ⚠️ Mỗi domain = 1 tài khoản CF mới. Sau khi tạo, vào từng domain
-                                                        để nhập API token và kích hoạt Worker.
-                                                    </p>
-                                                </form>
-                                            </div>
 
                                             <div class="cdn-grid">
                                                 <!-- ─── Panel 2: Thêm thủ công ─── -->
@@ -404,7 +361,7 @@ location ~* ^/hls/.+\.m3u8$ {
                                                 <h3>🌐 Danh Sách CDN Domains (<%= domains.length %>)</h3>
                                                 <% if(domains.length===0) { %>
                                                     <p style="color:var(--text-secondary);font-size:13px;">Chưa có
-                                                        domain nào. Thêm thủ công hoặc dùng auto-create.</p>
+                                                        domain nào. Thêm thủ công bên trên.</p>
                                                     <% } else { %>
                                                         <table class="domains-table">
                                                             <thead>
@@ -525,27 +482,10 @@ location ~* ^/hls/.+\.m3u8$ {
                                                                                 </div>
                                                                                 <div class="form-row">
                                                                                     <div class="form-group">
-                                                                                        <label>Hetzner IP (để tự setup
-                                                                                            CF)</label>
-                                                                                        <input name="hetzner_ip"
-                                                                                            placeholder="1.2.3.4"
-                                                                                            id="edit-ip-<%= d.id %>">
-                                                                                    </div>
-                                                                                    <div class="form-group">
                                                                                         <label>Ghi chú</label>
                                                                                         <input name="note"
                                                                                             value="<%= d.note %>"
                                                                                             placeholder="Ghi chú">
-                                                                                    </div>
-                                                                                    <div class="form-group"
-                                                                                        style="justify-content:flex-end;display:flex;align-items:flex-end;">
-                                                                                        <label
-                                                                                            style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-                                                                                            <input type="checkbox"
-                                                                                                name="do_cf_setup"
-                                                                                                value="1"> Tự thiết lập
-                                                                                            zone+DNS+Worker trên CF
-                                                                                        </label>
                                                                                     </div>
                                                                                 </div>
                                                                                 <div style="display:flex;gap:10px;">
@@ -564,47 +504,9 @@ location ~* ^/hls/.+\.m3u8$ {
                                                         <% } %>
                                             </div>
 
-                                            <!-- ─── Jobs log ─── -->
-                                            <% if(jobs.length> 0) { %>
-                                                <div class="cdn-card">
-                                                    <h3>📋 Lịch Sử Tạo Tự Động</h3>
-                                                    <div id="jobs-log">
-                                                        <% jobs.forEach(j=> { %>
-                                                            <div class="job-item" id="job-<%= j.id %>">
-                                                                <div class="job-header">
-                                                                    <span class="job-domain">
-                                                                        <%= j.domain %>
-                                                                    </span>
-                                                                    <span
-                                                                        class="badge-<%= j.status === 'done' || j.status === 'awaiting_token' ? 'active' : j.status === 'failed' ? 'failed' : j.status === 'running' ? 'running' : 'pending' %>">
-                                                                        <%= j.status %>
-                                                                    </span>
-                                                                </div>
-                                                                <div class="log-box" id="job-log-<%= j.id %>">
-                                                                    <% try { JSON.parse(j.log || '[]' ).forEach(l=> { %>
-                                                                        <div
-                                                                            class="log-line <%= l.msg.startsWith('❌') ? 'err' : l.msg.startsWith('⚠') ? 'warn' : '' %>">
-                                                                            [<%= new
-                                                                                Date(l.time).toLocaleTimeString('vi-VN')
-                                                                                %>] <%= l.msg %>
-                                                                        </div>
-                                                                        <% }) } catch(e) {} %>
-                                                                </div>
-                                                            </div>
-                                                            <% }) %>
-                                                    </div>
-                                                </div>
-                                                <% } %>
+
 
                                                     <script>
-                                                        // Auto-fill IP khi chọn server
-                                                        document.querySelector('[name="server_id"]')?.addEventListener('change', function () {
-                                                            const opts = this.options;
-                                                            const sel = opts[this.selectedIndex];
-                                                            const ip = sel?.text?.match(/\(([^)]+)\)/)?.[1];
-                                                            if (ip) document.getElementById('auto-ip').value = ip;
-                                                        });
-
                                                         function openEdit(id) {
                                                             document.getElementById('edit-' + id).style.display = '';
                                                         }
@@ -640,50 +542,6 @@ location ~* ^/hls/.+\.m3u8$ {
                                                             btn.disabled = false;
                                                             btn.textContent = 'Test';
                                                             alert(data.message + (data.cf_ray ? `\nCF-Ray: ${data.cf_ray}` : ''));
-                                                        }
-
-                                                        // SSE: subscribe to running jobs
-                                                        const urlParams = new URLSearchParams(window.location.search);
-                                                        const jobsParam = urlParams.get('jobs');
-                                                        if (jobsParam) {
-                                                            jobsParam.split(',').map(Number).filter(Boolean).forEach(jobId => {
-                                                                subscribeJob(jobId);
-                                                            });
-                                                        }
-
-                                                        function subscribeJob(jobId) {
-                                                            const es = new EventSource(`/admin/cdn/create-stream?jobId=${jobId}`);
-                                                            es.addEventListener('log', (e) => {
-                                                                const d = JSON.parse(e.data);
-                                                                let box = document.getElementById('job-log-' + jobId);
-                                                                if (!box) {
-                                                                    // Tạo job item nếu chưa có
-                                                                    const container = document.getElementById('jobs-log');
-                                                                    if (!container) return;
-                                                                    const item = document.createElement('div');
-                                                                    item.className = 'job-item';
-                                                                    item.id = 'job-' + jobId;
-                                                                    item.innerHTML = `<div class="job-header"><span class="job-domain">${d.domain}</span><span class="badge-running" id="job-badge-${jobId}">running</span></div><div class="log-box" id="job-log-${jobId}"></div>`;
-                                                                    container.prepend(item);
-                                                                    box = document.getElementById('job-log-' + jobId);
-                                                                }
-                                                                const line = document.createElement('div');
-                                                                line.className = 'log-line' + (d.msg?.startsWith('❌') ? ' err' : d.msg?.startsWith('⚠') ? ' warn' : '');
-                                                                line.textContent = d.msg;
-                                                                box.appendChild(line);
-                                                                box.scrollTop = box.scrollHeight;
-                                                            });
-                                                            es.addEventListener('done', (e) => {
-                                                                const d = JSON.parse(e.data);
-                                                                const badge = document.getElementById('job-badge-' + jobId);
-                                                                if (badge) {
-                                                                    badge.className = d.ok ? 'badge-active' : 'badge-failed';
-                                                                    badge.textContent = d.status || (d.ok ? 'done' : 'failed');
-                                                                }
-                                                                es.close();
-                                                                // Reload sau 2s để cập nhật bảng
-                                                                setTimeout(() => location.reload(), 2000);
-                                                            });
                                                         }
                                                     </script>
 
