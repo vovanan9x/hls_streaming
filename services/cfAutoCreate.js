@@ -95,12 +95,42 @@ async function waitForVerificationLink(mailToken, timeoutMs = 120000) {
 
 // ---------- Puppeteer helpers ----------
 
-async function getPuppeteer() {
+/**
+ * Detect Chromium/Chrome executable on the system
+ */
+function findChromePath() {
+    const fs = require('fs');
+    const paths = [
+        // Linux
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
+        '/snap/bin/chromium',
+        // Mac
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        // Windows
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    ];
+    for (const p of paths) {
+        if (fs.existsSync(p)) return p;
+    }
+    return null;
+}
+
+/**
+ * Get puppeteer module + launch options
+ * @returns {{ puppeteer, launchOpts }}
+ */
+async function getPuppeteerWithOpts() {
+    let puppeteer, needsPath = false;
     try {
-        return require('puppeteer');
+        puppeteer = require('puppeteer');
     } catch {
         try {
-            return require('puppeteer-core');
+            puppeteer = require('puppeteer-core');
+            needsPath = true;
         } catch {
             throw new Error(
                 'Puppeteer chưa được cài đặt! Chạy: npm install puppeteer-core\n' +
@@ -108,17 +138,33 @@ async function getPuppeteer() {
             );
         }
     }
+
+    const launchOpts = {
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    };
+
+    if (needsPath) {
+        const chromePath = process.env.CHROME_PATH || findChromePath();
+        if (!chromePath) {
+            throw new Error(
+                'Không tìm thấy Chrome/Chromium! Cài đặt:\n' +
+                '  Ubuntu: apt install -y chromium-browser\n' +
+                '  Hoặc set biến môi trường: CHROME_PATH=/path/to/chrome'
+            );
+        }
+        launchOpts.executablePath = chromePath;
+    }
+
+    return { puppeteer, launchOpts };
 }
 
 /**
  * Đăng ký tài khoản Cloudflare qua browser
  */
 async function signUpCloudflare(email, password, log) {
-    const puppeteer = await getPuppeteer();
-    const browser = await puppeteer.launch({
-        headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
+    const { puppeteer, launchOpts } = await getPuppeteerWithOpts();
+    const browser = await puppeteer.launch(launchOpts);
 
     try {
         const page = await browser.newPage();
@@ -157,11 +203,8 @@ async function signUpCloudflare(email, password, log) {
  * Click vào verification link qua Puppeteer
  */
 async function clickVerificationLink(verifyUrl, log) {
-    const puppeteer = await getPuppeteer();
-    const browser = await puppeteer.launch({
-        headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const { puppeteer, launchOpts } = await getPuppeteerWithOpts();
+    const browser = await puppeteer.launch(launchOpts);
     try {
         const page = await browser.newPage();
         log('Click link xác minh email...');
@@ -203,11 +246,8 @@ async function cfRequest(method, path, apiToken, body) {
  * Ở đây ta ghi chú để user nhập token sau.
  */
 async function getApiTokenViaScraping(email, password, log) {
-    const puppeteer = await getPuppeteer();
-    const browser = await puppeteer.launch({
-        headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const { puppeteer, launchOpts } = await getPuppeteerWithOpts();
+    const browser = await puppeteer.launch(launchOpts);
     try {
         const page = await browser.newPage();
         log('Đăng nhập CF để lấy API token...');
