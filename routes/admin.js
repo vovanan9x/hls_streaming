@@ -369,17 +369,27 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
                     }
                     return;
                 } else {
-                    console.warn(`[Process] Worker dispatch thất bại, fallback encode local...`);
+                    // Dispatch failed - giữ queued, worker poller sẽ re-dispatch
+                    console.warn(`[Process] Worker dispatch thất bại cho videoId=${videoId}, chờ worker poller...`);
+                    db.prepare("UPDATE videos SET status='queued', progress=0 WHERE id=?").run(videoId);
+                    return;
                 }
             } else {
-                console.log(`[Process] Không có worker rảnh, encode local...`);
+                // No worker available - giữ queued, worker poller sẽ re-dispatch
+                console.log(`[Process] Không có worker rảnh cho videoId=${videoId}, chờ worker poller...`);
+                db.prepare("UPDATE videos SET status='queued', progress=0 WHERE id=?").run(videoId);
+                return;
             }
         } catch (workerErr) {
-            console.warn(`[Process] Lỗi khi tìm/dispatch worker:`, workerErr.message, '— fallback encode local...');
+            // Worker error - giữ queued, worker poller sẽ re-dispatch
+            console.warn(`[Process] Lỗi khi tìm/dispatch worker cho videoId=${videoId}:`, workerErr.message, '— chờ worker poller...');
+            db.prepare("UPDATE videos SET status='queued', progress=0 WHERE id=?").run(videoId);
+            return;
         }
 
-        // ── Fallback: encode local + SFTP ──
-        // Nếu không có file local nhưng có sourceUrl, download trước
+        // ── Local encode đã bị tắt — chỉ dùng remote worker ──
+        // Nếu đến đây thì không có worker nào rảnh và re-queue đã được gọi
+        return;
         if (!videoFilePath && sourceUrl) {
             console.log(`[Process] No local file for video ${videoId}, downloading from sourceUrl for local encode...`);
             const { downloadRemoteFile } = require('../services/upload');
@@ -490,6 +500,55 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
 // Wire the queue processor
 encodeQueue.setProcessor(processVideo);
 
+
+// ── Worker Poller (global, 1 timer duy nhất) ──────────────────────────────
+// Thay vì setTimeout per-job, dùng 1 poller check workers định kỳ.
+// Khi worker rảnh → lấy video 'queued' tiếp theo trong DB → dispatch.
+(function startWorkerPoller() {
+    const POLL_INTERVAL = 30 * 1000; // 30 giây
+    setInterval(async () => {
+        try {
+            const { encodeQueue } = require('./services/queue');
+            // Chỉ chạy nếu không có job nào đang dispatching
+            if (encodeQueue.remoteJobs.size > 0) return;
+
+            const worker = await workerPool.findIdleWorker();
+            if (!worker) return; // Không có worker rảnh
+
+            const db2 = getDb();
+            // Lấy video queued cũ nhất chưa có trong encodeQueue
+            const queuedIds = new Set([
+                ...[...encodeQueue.queue].map(j => j.videoId),
+                encodeQueue.currentId,
+                ...[...encodeQueue.remoteJobs.keys()]
+            ].filter(Boolean));
+
+            const next = db2.prepare(`
+                SELECT id, qualities, thumbnail, video_file
+                FROM videos WHERE status = 'queued'
+                ORDER BY sort_order ASC, id ASC LIMIT 20
+            `).all().find(v => !queuedIds.has(v.id));
+
+            if (!next) return; // Không có video queued nào đang chờ
+
+            let qualities = ['sd'];
+            try { qualities = JSON.parse(next.qualities || '["sd"]'); } catch (e) {}
+
+            console.log(`[WorkerPoller] Found idle worker, dispatching videoId=${next.id}...`);
+            encodeQueue.push({
+                videoId: next.id,
+                videoFilePath: null,
+                videoFileName: null,
+                autoThumb: !next.thumbnail,
+                qualities,
+                sourceUrl: next.video_file || null
+            });
+        } catch (e) {
+            console.error('[WorkerPoller] Error:', e.message);
+        }
+    }, POLL_INTERVAL);
+    console.log('[WorkerPoller] Started — poll interval:', POLL_INTERVAL / 1000, 's');
+})();
 // GET /admin/api/sftp-progress/:id — current SFTP file-upload progress
 router.get('/api/sftp-progress/:id', requireAuth, (req, res) => {
     const videoId = parseInt(req.params.id);
