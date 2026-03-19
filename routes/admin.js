@@ -1050,14 +1050,10 @@ router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
             return 204;
         }`;
 
-    // Signed URL — chen vao M3U8 block neu da cau hinh secret
-    const secureLink = signedSecret ? `
-        # Signed URL validation
-        secure_link $arg_token,$arg_expires;
-        secure_link_md5 "$arg_expires$uri ${signedSecret}";
-        if ($secure_link = "")  { return 403; }
-        if ($secure_link = "0") { return 410; }
-` : '';
+    // NOTE: secure_link trong Nginx KHÔNG dùng cho m3u8 vì hls.js
+    // fetch variant playlists (hd/sd/...) không kèm token → 403.
+    // Bảo vệ Signed URL được xử lý ở tầng Node.js khi tạo URL.
+    const secureLink = '';
 
     const segmentBlock = usePng ? `
     # TS segments phuc vu duoi URL .png (camouflage)
