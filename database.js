@@ -68,6 +68,16 @@ function initTables() {
       FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
     );
 
+    -- Bảng folders: tạo để thỏa FK constraint folder_id REFERENCES folders(id) trong videos
+    -- Chức năng folder chưa triển khai đầy đủ nhưng bảng cần tồn tại
+    CREATE TABLE IF NOT EXISTS folders (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL DEFAULT 'Folder',
+      server_id   INTEGER REFERENCES servers(id) ON DELETE SET NULL,
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  DATETIME DEFAULT (datetime('now','localtime'))
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
