@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
@@ -1150,6 +1150,16 @@ ${m3u8Block}
     location /ping {
         return 200 'ok';
         add_header Content-Type text/plain;
+        access_log off;
+    }
+
+    # Thumbnails - serve anh preview cho video
+    location /thumbnails/ {
+${preflight}
+        types { }
+        default_type image/jpeg;
+        add_header Cache-Control "public, max-age=86400" always;
+${cors}
         access_log off;
     }
 
