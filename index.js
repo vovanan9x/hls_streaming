@@ -205,14 +205,21 @@ apiRouter.post('/upload/url', (req, res) => {
     const server = db.prepare('SELECT id FROM servers WHERE id=? AND is_active=1').get(server_id);
     if (!server) return res.status(400).json({ error: 'server_id không hợp lệ' });
 
+    // Dedup: nếu URL đã tồn tại thì trả về video cũ
+    const existing = db.prepare('SELECT id, status, m3u8_url, iframe_url FROM videos WHERE video_file=?').get(url);
+    if (existing) {
+        return res.json({ ok: true, video_id: existing.id, status: existing.status, m3u8_url: existing.m3u8_url, iframe_url: existing.iframe_url, already_exists: true, message: 'URL này đã được upload trước đó, trả về video hiện có.' });
+    }
+
     try {
         const { encodeQueue } = require('./services/queue');
         const q = normalizeQualities(qualities);
         const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM videos').get().m;
         const folderId = folder_id ? parseInt(folder_id) || null : null;
         const idahVal = idah ? String(idah).trim() || null : null;
+        // Lưu url vào video_file để dedup về sau
         const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order,folder_id,idah) VALUES (?,?,?,?,?,'queued',?,?,?,?,?)`);
-        const row = ins.run(title, description || '', '', server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1, folderId, idahVal);
+        const row = ins.run(title, description || '', url, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1, folderId, idahVal);
         const videoId = row.lastInsertRowid;
         encodeQueue.push({ videoId, videoFilePath: null, videoFileName: null, autoThumb: true, qualities: q, sourceUrl: url });
         res.json({ ok: true, video_id: videoId, status: 'queued', message: 'Video đã được thêm vào hàng đợi xử lý.' });
@@ -241,14 +248,21 @@ apiRouter.post('/upload/drive', (req, res) => {
     const fileId = driveMatch[1];
     const sourceUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
 
+    // Dedup: nếu Drive file ID đã tồn tại thì trả về video cũ
+    const existing = db.prepare("SELECT id, status, m3u8_url, iframe_url FROM videos WHERE video_file LIKE ?").get(`%id=${fileId}%`);
+    if (existing) {
+        return res.json({ ok: true, video_id: existing.id, status: existing.status, m3u8_url: existing.m3u8_url, iframe_url: existing.iframe_url, already_exists: true, message: 'File Drive này đã được upload trước đó, trả về video hiện có.' });
+    }
+
     try {
         const { encodeQueue } = require('./services/queue');
         const q = normalizeQualities(qualities);
         const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM videos').get().m;
         const folderId = folder_id ? parseInt(folder_id) || null : null;
         const idahVal = idah ? String(idah).trim() || null : null;
+        // Lưu sourceUrl vào video_file để dedup về sau
         const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order,folder_id,idah) VALUES (?,?,?,?,?,'queued',?,?,?,?,?)`);
-        const row = ins.run(title, description || '', '', server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1, folderId, idahVal);
+        const row = ins.run(title, description || '', sourceUrl, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1, folderId, idahVal);
         const videoId = row.lastInsertRowid;
         encodeQueue.push({ videoId, videoFilePath: null, videoFileName: null, autoThumb: true, qualities: q, sourceUrl });
         res.json({ ok: true, video_id: videoId, status: 'queued', message: 'Video từ Google Drive đã được thêm vào hàng đợi.' });
