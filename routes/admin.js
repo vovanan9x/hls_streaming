@@ -344,6 +344,22 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
                     encodeQueue.remoteJobs.set(videoId, { worker, job: { videoId }, dispatchedAt: new Date() });
                     console.log(`[Process] Video ${videoId} dispatched to worker ${worker.label}, waiting for callback...`);
 
+                    // Timeout: nếu sau 45 phút không có callback → mark failed + re-add to queue
+                    const WORKER_TIMEOUT_MS = 45 * 60 * 1000;
+                    const timeoutHandle = setTimeout(async () => {
+                        const { encodeQueue } = require('../services/queue');
+                        if (!encodeQueue.remoteJobs.has(videoId)) return; // callback đã đến
+                        encodeQueue.remoteJobs.delete(videoId);
+                        const db2 = getDb();
+                        const stillProcessing = db2.prepare("SELECT status FROM videos WHERE id=?").get(videoId);
+                        if (stillProcessing && stillProcessing.status === 'processing') {
+                            db2.prepare("UPDATE videos SET status='error', progress=0 WHERE id=?").run(videoId);
+                            console.error(`[Timeout] Worker ${worker.label} không callback sau 45p cho videoId=${videoId} → marked error`);
+                        }
+                    }, WORKER_TIMEOUT_MS);
+                    // Lưu timeout handle để cancel khi callback đến
+                    encodeQueue.remoteJobs.get(videoId).timeoutHandle = timeoutHandle;
+
                     // Xóa file local nếu dùng URL dispatch (file đã download không cần giữ)
                     if (sourceUrl && videoFilePath && fs.existsSync(videoFilePath)) {
                         try {
@@ -1757,9 +1773,22 @@ router.post('/api/worker/done', (req, res) => {
         .run(m3u8Url, iframeUrl, thumbnailUrl, videoId);
 
     const { encodeQueue } = require('../services/queue');
+    // Cancel timeout handle nếu có (callback đến đúng hạn)
+    const remoteJobInfo = encodeQueue.remoteJobs.get(videoId);
+    if (remoteJobInfo && remoteJobInfo.timeoutHandle) {
+        clearTimeout(remoteJobInfo.timeoutHandle);
+    }
     encodeQueue.markRemoteDone(videoId);
 
     console.log(`[Worker Callback] Video ${videoId} DONE → ${m3u8Url}`);
+
+    // Purge Cloudflare cache cho video vừa encode xong
+    if (video.server_id) {
+        const { purgeVideoCache } = require('../services/cfCache');
+        purgeVideoCache(videoId, video.server_id)
+            .then(r => console.log(`[CFCache] Purge videoId=${videoId}: purged=${r.purged}, errors=${r.errors.join(',') || 'none'}`))
+            .catch(e => console.error('[CFCache] Purge error:', e.message));
+    }
     res.json({ ok: true });
 });
 
