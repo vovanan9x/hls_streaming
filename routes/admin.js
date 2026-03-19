@@ -1027,6 +1027,7 @@ router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
     const s = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
     if (!s) return res.status(404).send('Server không tồn tại');
 
+    const bwLimit = s.bandwidth_limit || '1m';        // KB/s, đọc từ DB nếu có
     const config = `server {
     listen 80;
     server_name _;
@@ -1034,17 +1035,22 @@ router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
     root ${s.storage_path || '/var/hls-storage'};
 
     # .png URLs → .ts segments (CF Worker sẽ sửa Content-Type)
-    location ~* ^/hls/([^/]+)/([^/]+)/(.+)\.png$ {
+    location ~* ^/hls/([^/]+)/([^/]+)/(.+)\\.png$ {
         try_files /hls/$1/$2/$3.ts =404;
         types { }
         default_type image/png;
         add_header Cache-Control "public, max-age=31536000, immutable";
         add_header Access-Control-Allow-Origin "*";
         access_log off;
+
+        # Bandwidth limit: truyền nhanh 2MB đầu (buffer segment), sau đó throttle
+        # Chỉ giới hạn khi Cloudflare/BunnyCDN cache MISS kéo từ origin
+        limit_rate_after 2m;
+        limit_rate ${bwLimit};
     }
 
     # M3U8 playlists — thay .ts → .png, no-cache
-    location ~* \.m3u8$ {
+    location ~* \\.m3u8$ {
         types { }
         default_type application/vnd.apple.mpegurl;
         sub_filter '.ts' '.png';
