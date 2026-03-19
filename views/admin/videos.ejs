@@ -504,6 +504,8 @@
       if (d.ok) { showToast('success', 'Đã thêm ' + d.retried + ' video vào hàng đợi retry'); setTimeout(function() { location.reload(); }, 1000); }
       else showToast('error', d.message || 'Lỗi');
     }).catch(function () { showToast('error', 'Lỗi kết nối'); });
+  };
+
 })();
 </script>
 
