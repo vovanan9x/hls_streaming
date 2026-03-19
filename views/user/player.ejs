@@ -1,230 +1,696 @@
 <!DOCTYPE html>
 <html lang="vi">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>
-        <%= title %> — HLS Player
-    </title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title><%= title %> — Player</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
-        html,
-        body {
-            width: 100%;
-            height: 100%;
-            background: #000;
-            overflow: hidden;
-            font-family: 'Inter', -apple-system, sans-serif;
-        }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-        .player-page {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #000;
-        }
+    :root {
+      --ctrl-h: 56px;
+      --accent: #6366f1;
+      --accent2: #818cf8;
+      --glass: rgba(0,0,0,0.72);
+      --glass-light: rgba(255,255,255,0.08);
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --radius: 8px;
+      --transition: .18s ease;
+    }
 
-        .player-container {
-            width: 100%;
-            height: 100%;
-            max-width: 100%;
-            max-height: 100%;
-            position: relative;
-        }
+    html, body {
+      width: 100%; height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, sans-serif;
+    }
 
-        #player {
-            width: 100% !important;
-            height: 100% !important;
-        }
+    /* ── Container ── */
+    #vp-wrap {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      background: #000; position: relative;
+    }
 
-        .player-error {
-            color: #666;
-            text-align: center;
-            padding: 40px 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-        }
+    #vp-video {
+      display: block;
+      width: 100%; height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
 
-        .player-error-icon {
-            font-size: 64px;
-            margin-bottom: 16px;
-        }
+    /* ── Big centre play overlay ── */
+    #vp-centre-overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none; z-index: 10;
+    }
+    #vp-big-play {
+      width: 80px; height: 80px;
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(12px);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: all; cursor: pointer;
+      transition: transform .2s, background .2s;
+      border: 2px solid rgba(255,255,255,0.25);
+    }
+    #vp-big-play:hover { transform: scale(1.1); background: rgba(99,102,241,0.45); }
+    #vp-big-play svg { width: 36px; height: 36px; fill: #fff; margin-left: 4px; }
+    #vp-big-play.hidden { opacity: 0; pointer-events: none; }
 
-        .player-error h2 {
-            font-size: 20px;
-            color: #999;
-            margin-bottom: 8px;
-        }
+    /* ── Skip ripple feedback ── */
+    .skip-ripple {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: var(--glass); color: #fff;
+      padding: 10px 20px; border-radius: 24px;
+      font-size: 15px; font-weight: 600;
+      pointer-events: none; z-index: 30;
+      opacity: 0; transition: opacity .25s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .skip-ripple.left  { left: 10%; }
+    .skip-ripple.right { right: 10%; }
+    .skip-ripple.show  { opacity: 1; }
 
-        .player-error p {
-            font-size: 14px;
-            color: #555;
-            max-width: 500px;
-        }
+    /* ── Screenshot flash ── */
+    #vp-flash {
+      position: absolute; inset: 0;
+      background: #fff; opacity: 0;
+      pointer-events: none; z-index: 50;
+      transition: opacity .08s;
+    }
+    #vp-flash.flash { opacity: .55; }
 
-        /* Responsive: Tablet */
-        @media (min-width: 769px) and (max-width: 1024px) {
-            .player-container {
-                width: 100%;
-                height: 100%;
-            }
-        }
+    /* ── Controls bar ── */
+    #vp-controls {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.85) 40%, rgba(0,0,0,0.95));
+      padding: 40px 16px 12px;
+      z-index: 20;
+      transition: opacity .3s;
+    }
+    #vp-controls.hidden { opacity: 0; pointer-events: none; }
 
-        /* Responsive: PC — letterbox with max aspect ratio */
-        @media (min-width: 1025px) {
-            .player-page {
-                padding: 0;
-            }
+    /* Progress bar */
+    #vp-progress-row { position: relative; margin-bottom: 10px; }
+    #vp-seekbar-bg {
+      width: 100%; height: 4px; border-radius: 4px;
+      background: rgba(255,255,255,0.18);
+      cursor: pointer; position: relative;
+      transition: height .15s;
+    }
+    #vp-seekbar-bg:hover { height: 6px; }
+    #vp-seekbar-bg:hover #vp-thumb { opacity: 1; }
+    #vp-loaded {
+      height: 100%; border-radius: 4px;
+      background: rgba(255,255,255,0.25);
+      position: absolute; top: 0; left: 0; pointer-events: none;
+    }
+    #vp-played {
+      height: 100%; border-radius: 4px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      position: absolute; top: 0; left: 0; pointer-events: none;
+      transition: width .1s linear;
+    }
+    #vp-thumb {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #fff; border: 2px solid var(--accent);
+      position: absolute; top: 50%; transform: translate(-50%, -50%);
+      pointer-events: none; opacity: 0; transition: opacity .15s;
+      box-shadow: 0 0 6px rgba(99,102,241,0.6);
+    }
 
-            .player-container {
-                width: 100%;
-                height: 100%;
-            }
-        }
-    </style>
+    /* Tooltip time */
+    #vp-seek-tooltip {
+      position: absolute; bottom: 20px;
+      background: var(--glass); color: var(--text);
+      padding: 3px 8px; border-radius: 5px;
+      font-size: 12px; font-weight: 500;
+      pointer-events: none; display: none;
+      white-space: nowrap;
+    }
+
+    /* Buttons row */
+    #vp-btn-row {
+      display: flex; align-items: center; gap: 4px;
+    }
+
+    .vp-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--text); padding: 7px;
+      border-radius: var(--radius);
+      display: flex; align-items: center; justify-content: center;
+      transition: background var(--transition), color var(--transition), transform .12s;
+      flex-shrink: 0;
+    }
+    .vp-btn:hover { background: var(--glass-light); color: #fff; }
+    .vp-btn:active { transform: scale(.92); }
+    .vp-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .vp-btn.icon-fill svg { fill: currentColor; stroke: none; }
+
+    /* Special accent buttons */
+    .vp-btn.accent:hover { background: rgba(99,102,241,0.25); color: var(--accent2); }
+
+    /* Time display */
+    #vp-time {
+      font-size: 13px; color: var(--text-muted); white-space: nowrap;
+      padding: 0 8px; font-variant-numeric: tabular-nums; font-weight: 500;
+    }
+    #vp-time span { color: var(--text); }
+
+    /* Volume */
+    #vp-vol-wrap { display: flex; align-items: center; gap: 6px; }
+    #vp-vol-slider {
+      -webkit-appearance: none; appearance: none;
+      width: 72px; height: 4px; border-radius: 4px;
+      background: rgba(255,255,255,0.2);
+      cursor: pointer; outline: none;
+    }
+    #vp-vol-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 13px; height: 13px; border-radius: 50%;
+      background: #fff; cursor: pointer;
+    }
+
+    /* Quality select */
+    #vp-quality {
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+      color: var(--text); border-radius: 6px; font-size: 12px; font-weight: 500;
+      padding: 4px 8px; cursor: pointer; outline: none;
+      font-family: inherit;
+    }
+    #vp-quality option { background: #1e293b; }
+
+    /* Spacer */
+    .vp-spacer { flex: 1; }
+
+    /* Tooltip labels */
+    [data-tip] { position: relative; }
+    [data-tip]::after {
+      content: attr(data-tip);
+      position: absolute; bottom: calc(100% + 8px); left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b; color: var(--text);
+      padding: 4px 9px; border-radius: 5px;
+      font-size: 11px; white-space: nowrap; font-weight: 500;
+      opacity: 0; pointer-events: none; transition: opacity .15s;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    [data-tip]:hover::after { opacity: 1; }
+
+    /* Error */
+    #vp-error {
+      color: #64748b; text-align: center;
+      padding: 40px 20px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%;
+    }
+    #vp-error .err-icon { font-size: 56px; margin-bottom: 16px; }
+    #vp-error h2 { font-size: 20px; color: #94a3b8; margin-bottom: 8px; }
+    #vp-error p  { font-size: 14px; color: #475569; max-width: 480px; line-height: 1.6; }
+
+    /* Screenshot toast */
+    #vp-toast {
+      position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+      background: var(--glass); backdrop-filter: blur(12px);
+      color: var(--text); padding: 9px 18px; border-radius: 24px;
+      font-size: 13px; font-weight: 500;
+      display: flex; align-items: center; gap: 7px;
+      z-index: 60; opacity: 0; transition: opacity .25s;
+      border: 1px solid rgba(255,255,255,0.1);
+      white-space: nowrap;
+    }
+    #vp-toast.show { opacity: 1; }
+
+    @media (max-width: 480px) {
+      #vp-vol-wrap { display: none; }
+      #vp-quality { display: none; }
+      [data-tip]::after { display: none; }
+    }
+  </style>
 </head>
-
 <body>
-    <div class="player-page">
-        <% if (error) { %>
-            <div class="player-error">
-                <div class="player-error-icon">⚠️</div>
-                <h2>Không thể phát video</h2>
-                <p>
-                    <%= error %>
-                </p>
-            </div>
-            <% } else { %>
-                <div class="player-container">
-                    <div id="player"></div>
-                </div>
-                <% } %>
+
+<div id="vp-wrap">
+  <% if (error) { %>
+    <div id="vp-error">
+      <div class="err-icon">⚠️</div>
+      <h2>Không thể phát video</h2>
+      <p><%= error %></p>
+    </div>
+  <% } else { %>
+
+  <video id="vp-video" playsinline crossorigin="anonymous"></video>
+
+  <!-- Big play overlay -->
+  <div id="vp-centre-overlay">
+    <div id="vp-big-play" title="Phát / Tạm dừng">
+      <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    </div>
+  </div>
+
+  <!-- Skip ripples -->
+  <div class="skip-ripple left"  id="rpl-back">◀◀ 10s</div>
+  <div class="skip-ripple right" id="rpl-fwd">10s ▶▶</div>
+
+  <!-- Screenshot flash -->
+  <div id="vp-flash"></div>
+
+  <!-- Toast -->
+  <div id="vp-toast">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+    <span id="vp-toast-msg">Đã lưu ảnh chụp</span>
+  </div>
+
+  <!-- Controls -->
+  <div id="vp-controls">
+
+    <!-- Seekbar -->
+    <div id="vp-progress-row">
+      <div id="vp-seek-tooltip"></div>
+      <div id="vp-seekbar-bg">
+        <div id="vp-loaded"></div>
+        <div id="vp-played"></div>
+        <div id="vp-thumb"></div>
+      </div>
     </div>
 
-    <% if (m3u8Url) { %>
-        <script src="https://cdn.jwplayer.com/libraries/IDzF9Zmk.js"></script>
-        <script>
-            (function () {
-                var playerInstance = jwplayer("player");
-                playerInstance.setup({
-                    file: "<%- m3u8Url %>",
-                    type: "hls",
-                    width: "100%",
-                    height: "100%",
-                    aspectratio: undefined,
-                    stretching: "uniform",
-                    autostart: true,
-                    mute: false,
-                    controls: true,
-                    primary: "html5",
-                    hlshtml: true,
-                    skin: {
-                        name: "suspended-noir"
-                    },
-                    captions: {
-                        color: "#fff",
-                        fontSize: 16
-                    }
-                });
+    <!-- Buttons row -->
+    <div id="vp-btn-row">
 
-                playerInstance.on('ready', function () {
-                    console.log('[Player] Ready');
-                    <% if (videoId) { %>
-                    // Resume playback from last position
-                    var LS_POS = 'hls_pos_<%= videoId %>';
-                        var saved = parseFloat(localStorage.getItem(LS_POS) || '0');
-                        if (saved > 5) { playerInstance.seek(saved); }
+      <!-- Play/Pause -->
+      <button class="vp-btn" id="btn-play" data-tip="Phát / Tạm dừng (K)">
+        <svg id="ico-play"  viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none"/></svg>
+        <svg id="ico-pause" viewBox="0 0 24 24" style="display:none"><rect x="6" y="4" width="4" height="16" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" fill="currentColor" stroke="none"/></svg>
+      </button>
 
-                        // Save position every 5s
-                        setInterval(function () {
-                            var pos = playerInstance.getPosition();
-                            if (pos > 0) localStorage.setItem(LS_POS, pos);
-                        }, 5000);
+      <!-- Rewind 10s -->
+      <button class="vp-btn" id="btn-back" data-tip="Tua lùi 10s (←)">
+        <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/><text x="8" y="15" font-size="7" fill="currentColor" stroke="none" font-family="Inter,sans-serif" font-weight="700">10</text></svg>
+      </button>
 
-                        // Clear saved position on video complete
-                        playerInstance.on('complete', function () { localStorage.removeItem(LS_POS); });
-                    <% } %>
-                });
+      <!-- Forward 10s -->
+      <button class="vp-btn" id="btn-fwd" data-tip="Tua tới 10s (→)">
+        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-4"/><text x="8" y="15" font-size="7" fill="currentColor" stroke="none" font-family="Inter,sans-serif" font-weight="700">10</text></svg>
+      </button>
 
-                playerInstance.on('error', function (e) {
-                    console.error('[Player] Error:', e);
-                    document.getElementById('player').innerHTML =
-                        '<div class="player-error">' +
-                        '<div class="player-error-icon">❌</div>' +
-                        '<h2>Lỗi phát video</h2>' +
-                        '<p>' + (e.message || 'Không thể tải nguồn video.') + '</p>' +
-                        '</div>';
-                });
+      <!-- Volume -->
+      <div class="vp-btn" id="vp-vol-wrap" style="padding:0;gap:6px;">
+        <button class="vp-btn" id="btn-mute" data-tip="Tắt tiếng (M)" style="padding:7px 4px;">
+          <svg id="ico-vol" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          <svg id="ico-muted" viewBox="0 0 24 24" style="display:none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+        </button>
+        <input type="range" id="vp-vol-slider" min="0" max="1" step="0.02" value="1">
+      </div>
 
-                // Keyboard shortcuts
-                document.addEventListener('keydown', function (e) {
-                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-                    switch (e.key) {
-                        case ' ': case 'k':
-                            e.preventDefault();
-                            playerInstance.getState() === 'playing' ? playerInstance.pause() : playerInstance.play();
-                            break;
-                        case 'ArrowRight': e.preventDefault(); playerInstance.seek(playerInstance.getPosition() + 10); break;
-                        case 'ArrowLeft': e.preventDefault(); playerInstance.seek(Math.max(0, playerInstance.getPosition() - 10)); break;
-                        case 'f': case 'F': e.preventDefault(); playerInstance.setFullscreen(true); break;
-                        case 'm': case 'M': e.preventDefault(); playerInstance.setMute(!playerInstance.getMute()); break;
-                        case 'ArrowUp': e.preventDefault(); playerInstance.setVolume(Math.min(100, playerInstance.getVolume() + 10)); break;
-                        case 'ArrowDown': e.preventDefault(); playerInstance.setVolume(Math.max(0, playerInstance.getVolume() - 10)); break;
-                    }
-                });
-            })();
-        </script>
+      <!-- Time -->
+      <div id="vp-time"><span id="t-cur">0:00</span> / <span id="t-dur">0:00</span></div>
 
-        <% if (videoId) { %>
-            <script>
-                // Viewer ping — gửi mỗi 15 giây để đăng ký đang xem
-                (function () {
-                    var VIDEO_ID = '<%= videoId %>';
-                    var pingTimer = null;
+      <div class="vp-spacer"></div>
 
-                    function ping() {
-                        fetch('/api/viewer/ping', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ videoId: VIDEO_ID })
-                        }).catch(function () { });
-                    }
+      <!-- Quality -->
+      <select id="vp-quality" data-tip="Chất lượng">
+        <option value="-1">Auto</option>
+      </select>
 
-                    function startPing() {
-                        if (pingTimer) return;
-                        ping(); // immediate
-                        pingTimer = setInterval(ping, 15000);
-                    }
+      <!-- Screenshot -->
+      <button class="vp-btn accent" id="btn-shot" data-tip="Chụp ảnh (S)">
+        <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </button>
 
-                    function stopPing() {
-                        if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
-                    }
+      <!-- Download -->
+      <% const isUrl = (typeof videoFile !== 'undefined' && typeof videoFile === 'string' && videoFile.startsWith('http')); %>
+      <button class="vp-btn accent" id="btn-dl" data-tip="Tải về"
+        <% if (!isUrl) { %>style="opacity:.4;cursor:default;" disabled<% } %>>
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
 
-                    // Bắt đầu ping ngay khi trang load
-                    startPing();
+      <!-- Fullscreen -->
+      <button class="vp-btn" id="btn-fs" data-tip="Toàn màn hình (F)">
+        <svg id="ico-fs"  viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        <svg id="ico-exit-fs" viewBox="0 0 24 24" style="display:none"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="21" y2="3"/><line x1="3" y1="21" x2="14" y2="10"/></svg>
+      </button>
 
-                    // Dừng khi tab bị ẩn, tiếp tục khi hiện lại
-                    document.addEventListener('visibilitychange', function () {
-                        if (document.hidden) stopPing(); else startPing();
-                    });
+    </div><!-- /btn-row -->
+  </div><!-- /controls -->
 
-                    // Dừng khi rời trang
-                    window.addEventListener('beforeunload', stopPing);
-                })();
-            </script>
-            <% } %>
-                <% } %>
+  <% } %>
+</div><!-- /vp-wrap -->
+
+<% if (m3u8Url) { %>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const VIDEO_ID   = '<%= videoId %>';
+  const M3U8_URL   = '<%- m3u8Url %>';
+  const DL_URL     = '<%= isUrl ? videoFile : "" %>';
+  const LS_POS     = 'hls_pos_' + VIDEO_ID;
+
+  const video     = document.getElementById('vp-video');
+  const wrap      = document.getElementById('vp-wrap');
+  const controls  = document.getElementById('vp-controls');
+  const bigPlay   = document.getElementById('vp-big-play');
+  const btnPlay   = document.getElementById('btn-play');
+  const icoPlay   = document.getElementById('ico-play');
+  const icoPause  = document.getElementById('ico-pause');
+  const btnBack   = document.getElementById('btn-back');
+  const btnFwd    = document.getElementById('btn-fwd');
+  const btnMute   = document.getElementById('btn-mute');
+  const icoVol    = document.getElementById('ico-vol');
+  const icoMuted  = document.getElementById('ico-muted');
+  const volSlider = document.getElementById('vp-vol-slider');
+  const seekBg    = document.getElementById('vp-seekbar-bg');
+  const loaded    = document.getElementById('vp-loaded');
+  const played    = document.getElementById('vp-played');
+  const thumb     = document.getElementById('vp-thumb');
+  const tCur      = document.getElementById('t-cur');
+  const tDur      = document.getElementById('t-dur');
+  const btnFs     = document.getElementById('btn-fs');
+  const icoFs     = document.getElementById('ico-fs');
+  const icoExitFs = document.getElementById('ico-exit-fs');
+  const btnShot   = document.getElementById('btn-shot');
+  const btnDl     = document.getElementById('btn-dl');
+  const quality   = document.getElementById('vp-quality');
+  const flash     = document.getElementById('vp-flash');
+  const toast     = document.getElementById('vp-toast');
+  const toastMsg  = document.getElementById('vp-toast-msg');
+  const seekTip   = document.getElementById('vp-seek-tooltip');
+  const rplBack   = document.getElementById('rpl-back');
+  const rplFwd    = document.getElementById('rpl-fwd');
+
+  // ── HLS init ──────────────────────────────────────────────
+  let hls;
+  if (Hls.isSupported()) {
+    hls = new Hls({ enableWorker: true, lowLatencyMode: false });
+    hls.loadSource(M3U8_URL);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, function (_, data) {
+      // Build quality options
+      quality.innerHTML = '<option value="-1">Auto</option>';
+      data.levels.forEach(function (lv, i) {
+        const label = lv.height ? lv.height + 'p' : 'Level ' + i;
+        const opt = document.createElement('option');
+        opt.value = i; opt.textContent = label;
+        quality.appendChild(opt);
+      });
+      resumeAndPlay();
+    });
+    hls.on(Hls.Events.ERROR, function (_, d) {
+      if (d.fatal) { console.error('[HLS] fatal', d); }
+    });
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = M3U8_URL;
+    video.addEventListener('loadedmetadata', resumeAndPlay);
+  }
+
+  function resumeAndPlay() {
+    var saved = parseFloat(localStorage.getItem(LS_POS) || '0');
+    if (saved > 5) { video.currentTime = saved; }
+    video.play().catch(function () {});
+  }
+
+  // ── Quality switch ────────────────────────────────────────
+  quality && quality.addEventListener('change', function () {
+    if (!hls) return;
+    hls.currentLevel = parseInt(this.value);
+  });
+
+  // ── Format time ───────────────────────────────────────────
+  function fmt(s) {
+    if (!isFinite(s)) return '0:00';
+    s = Math.floor(s);
+    var m = Math.floor(s / 60), sec = s % 60;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  // ── Progress ──────────────────────────────────────────────
+  video.addEventListener('timeupdate', function () {
+    var pct = video.duration ? (video.currentTime / video.duration) * 100 : 0;
+    played.style.width = pct + '%';
+    thumb.style.left   = pct + '%';
+    tCur.textContent = fmt(video.currentTime);
+    if (video.duration) tDur.textContent = fmt(video.duration);
+    // save pos
+    if (VIDEO_ID && video.currentTime > 0) localStorage.setItem(LS_POS, video.currentTime);
+  });
+
+  video.addEventListener('progress', function () {
+    if (!video.duration) return;
+    var buf = video.buffered;
+    if (buf.length > 0) {
+      var pct = (buf.end(buf.length - 1) / video.duration) * 100;
+      loaded.style.width = pct + '%';
+    }
+  });
+
+  video.addEventListener('ended', function () {
+    localStorage.removeItem(LS_POS);
+    showBigPlay(true);
+  });
+
+  // ── Play / Pause ──────────────────────────────────────────
+  function setPlayUI(playing) {
+    icoPlay.style.display  = playing ? 'none' : '';
+    icoPause.style.display = playing ? '' : 'none';
+    showBigPlay(!playing);
+  }
+  video.addEventListener('play',  function () { setPlayUI(true); });
+  video.addEventListener('pause', function () { setPlayUI(false); });
+
+  function togglePlay() {
+    video.paused ? video.play().catch(function(){}) : video.pause();
+  }
+  btnPlay && btnPlay.addEventListener('click', togglePlay);
+  bigPlay && bigPlay.addEventListener('click', togglePlay);
+
+  function showBigPlay(show) {
+    bigPlay && bigPlay.classList.toggle('hidden', !show);
+  }
+
+  // ── Seek ──────────────────────────────────────────────────
+  var seeking = false;
+
+  function seekTo(e) {
+    var rect = seekBg.getBoundingClientRect();
+    var pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    if (video.duration) video.currentTime = pct * video.duration;
+  }
+
+  seekBg.addEventListener('mousedown', function (e) { seeking = true; seekTo(e); });
+  document.addEventListener('mousemove', function (e) { if (seeking) seekTo(e); });
+  document.addEventListener('mouseup',   function ()  { seeking = false; });
+
+  seekBg.addEventListener('mousemove', function (e) {
+    if (!video.duration) return;
+    var rect = seekBg.getBoundingClientRect();
+    var pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    var time = pct * video.duration;
+    seekTip.textContent = fmt(time);
+    seekTip.style.display = 'block';
+    var tipW = 44;
+    var x = (e.clientX - rect.left) - tipW/2;
+    seekTip.style.left = Math.max(0, Math.min(rect.width - tipW, x)) + 'px';
+  });
+  seekBg.addEventListener('mouseleave', function () { seekTip.style.display = 'none'; });
+
+  // Touch seek
+  seekBg.addEventListener('touchstart', function (e) {
+    seeking = true; seekTo(e.touches[0]); e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchmove', function (e) {
+    if (seeking) { seekTo(e.touches[0]); e.preventDefault(); }
+  }, { passive: false });
+  document.addEventListener('touchend', function () { seeking = false; });
+
+  // ── Skip ±10s ─────────────────────────────────────────────
+  function showRipple(el) {
+    el.classList.add('show');
+    setTimeout(function () { el.classList.remove('show'); }, 700);
+  }
+
+  btnBack && btnBack.addEventListener('click', function () {
+    video.currentTime = Math.max(0, video.currentTime - 10);
+    showRipple(rplBack);
+  });
+  btnFwd && btnFwd.addEventListener('click', function () {
+    video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 10);
+    showRipple(rplFwd);
+  });
+
+  // Double-tap skip on mobile
+  var lastTap = 0, lastTapX = 0;
+  wrap.addEventListener('touchend', function (e) {
+    var now = Date.now();
+    if (now - lastTap < 300) {
+      var x = e.changedTouches[0].clientX;
+      var mid = wrap.clientWidth / 2;
+      if (x < mid) { video.currentTime = Math.max(0, video.currentTime - 10); showRipple(rplBack); }
+      else          { video.currentTime += 10; showRipple(rplFwd); }
+    }
+    lastTap = now; lastTapX = e.changedTouches[0].clientX;
+  });
+
+  // ── Volume ────────────────────────────────────────────────
+  function updateVolUI() {
+    var muted = video.muted || video.volume === 0;
+    icoVol.style.display   = muted ? 'none' : '';
+    icoMuted.style.display = muted ? '' : 'none';
+  }
+  volSlider && volSlider.addEventListener('input', function () {
+    video.volume = parseFloat(this.value);
+    video.muted  = (video.volume === 0);
+    updateVolUI();
+  });
+  btnMute && btnMute.addEventListener('click', function () {
+    video.muted = !video.muted;
+    if (volSlider) volSlider.value = video.muted ? 0 : video.volume;
+    updateVolUI();
+  });
+
+  // ── Screenshot ────────────────────────────────────────────
+  function showToast(msg, dur) {
+    toastMsg.textContent = msg || 'Đã lưu ảnh chụp';
+    toast.classList.add('show');
+    setTimeout(function () { toast.classList.remove('show'); }, dur || 2200);
+  }
+
+  function doFlash() {
+    flash.classList.add('flash');
+    setTimeout(function () { flash.classList.remove('flash'); }, 120);
+  }
+
+  btnShot && btnShot.addEventListener('click', function () {
+    try {
+      var canvas = document.createElement('canvas');
+      canvas.width  = video.videoWidth  || 1280;
+      canvas.height = video.videoHeight || 720;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(function (blob) {
+        if (!blob) { showToast('⚠️ Không thể chụp (CORS)', 2500); return; }
+        var url  = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = 'screenshot-' + Date.now() + '.png';
+        link.click();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
+        doFlash();
+        showToast('📷 Đã lưu ảnh chụp');
+      }, 'image/png');
+    } catch (err) {
+      showToast('⚠️ Không thể chụp: ' + err.message, 3000);
+    }
+  });
+
+  // ── Download ──────────────────────────────────────────────
+  if (DL_URL && btnDl) {
+    btnDl.addEventListener('click', function () {
+      var a = document.createElement('a');
+      a.href = DL_URL;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      // Try to trigger download
+      a.download = '<%= (typeof videoTitle !== "undefined" ? videoTitle : "video") %>'.replace(/[^a-z0-9\u00C0-\u024F ]/gi, '_') + '.mp4';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('⬇️ Đang tải về...');
+    });
+  }
+
+  // ── Fullscreen ────────────────────────────────────────────
+  function isFs() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+  function updateFsUI() {
+    icoFs.style.display     = isFs() ? 'none' : '';
+    icoExitFs.style.display = isFs() ? '' : 'none';
+  }
+  document.addEventListener('fullscreenchange', updateFsUI);
+  document.addEventListener('webkitfullscreenchange', updateFsUI);
+
+  btnFs && btnFs.addEventListener('click', function () {
+    if (isFs()) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } else {
+      var el = wrap;
+      (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen).call(el);
+    }
+  });
+
+  // ── Auto-hide controls ────────────────────────────────────
+  var hideTimer;
+  function showControls() {
+    controls.classList.remove('hidden');
+    clearTimeout(hideTimer);
+    if (!video.paused) {
+      hideTimer = setTimeout(function () { controls.classList.add('hidden'); }, 3000);
+    }
+  }
+  wrap.addEventListener('mousemove', showControls);
+  wrap.addEventListener('touchstart', showControls, { passive: true });
+  video.addEventListener('pause', function () {
+    clearTimeout(hideTimer);
+    controls.classList.remove('hidden');
+  });
+  video.addEventListener('play', function () {
+    hideTimer = setTimeout(function () { controls.classList.add('hidden'); }, 3000);
+  });
+
+  // Click on video to toggle play (except on controls)
+  video.addEventListener('click', function (e) {
+    if (e.target === video) togglePlay();
+  });
+
+  // ── Keyboard shortcuts ────────────────────────────────────
+  document.addEventListener('keydown', function (e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+    showControls();
+    switch (e.key) {
+      case ' ': case 'k': e.preventDefault(); togglePlay(); break;
+      case 'ArrowRight': e.preventDefault(); video.currentTime += 10; showRipple(rplFwd); break;
+      case 'ArrowLeft':  e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - 10); showRipple(rplBack); break;
+      case 'ArrowUp':    e.preventDefault(); video.volume = Math.min(1, video.volume + 0.1); if (volSlider) volSlider.value = video.volume; break;
+      case 'ArrowDown':  e.preventDefault(); video.volume = Math.max(0, video.volume - 0.1); if (volSlider) volSlider.value = video.volume; break;
+      case 'f': case 'F': e.preventDefault(); btnFs && btnFs.click(); break;
+      case 'm': case 'M': e.preventDefault(); btnMute && btnMute.click(); break;
+      case 's': case 'S': e.preventDefault(); btnShot && btnShot.click(); break;
+    }
+  });
+
+})();
+</script>
+
+<% if (videoId) { %>
+<script>
+// Viewer ping — gửi mỗi 15 giây
+(function () {
+  var VIDEO_ID = '<%= videoId %>';
+  var pingTimer = null;
+  function ping() {
+    fetch('/api/viewer/ping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoId: VIDEO_ID })
+    }).catch(function () {});
+  }
+  function startPing() { if (pingTimer) return; ping(); pingTimer = setInterval(ping, 15000); }
+  function stopPing()  { if (pingTimer) { clearInterval(pingTimer); pingTimer = null; } }
+  startPing();
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stopPing(); else startPing();
+  });
+  window.addEventListener('beforeunload', stopPing);
+})();
+</script>
+<% } %>
+<% } %>
+
 </body>
-
 </html>

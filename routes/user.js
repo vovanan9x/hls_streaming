@@ -17,6 +17,7 @@ router.get('/embed/:videoId', (req, res) => {
             m3u8Url: null,
             videoTitle: 'Video không tồn tại',
             videoId: null,
+            videoFile: '',
             error: 'Video không tồn tại hoặc chưa sẵn sàng.'
         });
     }
@@ -31,6 +32,7 @@ router.get('/embed/:videoId', (req, res) => {
         m3u8Url,
         videoTitle: video.title,
         videoId: video.id,
+        videoFile: video.video_file || '',
         error: null
     });
 });
@@ -45,6 +47,7 @@ router.get('/play', (req, res) => {
             m3u8Url: null,
             videoTitle: 'HLS Player',
             videoId: null,
+            videoFile: '',
             error: 'Vui lòng cung cấp URL m3u8. Ví dụ: /play?url=https://example.com/video/index.m3u8'
         });
     }
@@ -59,6 +62,7 @@ router.get('/play', (req, res) => {
         m3u8Url,
         videoTitle: 'HLS Player',
         videoId: id || null,
+        videoFile: '',
         error: null
     });
 });
