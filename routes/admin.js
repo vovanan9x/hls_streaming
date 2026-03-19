@@ -435,7 +435,16 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
         } catch (e) { console.warn(`[Cleanup] Could not delete HLS dir:`, e.message); }
 
         // Mark ready
-        db.prepare(`UPDATE videos SET m3u8_url=?, iframe_url=?, thumbnail=?, status='ready', progress=100,
+    
+    // Build full thumbnail URL — worker SFTP thumbnail lên storage server, không phải local
+    let thumbnailUrl = video.thumbnail || '';
+    if (thumbnailName) {
+        const base = (serverInfo && serverInfo.cdn_url && serverInfo.cdn_url.trim())
+            ? serverInfo.cdn_url.replace(/\/$/, '')
+            : (serverInfo ? `http://${serverInfo.ip}` : '');
+        thumbnailUrl = base ? `${base}/thumbnails/${thumbnailName}` : thumbnailName;
+    }
+    db.prepare(`UPDATE videos SET m3u8_url=?, iframe_url=?, thumbnail=?, status='ready', progress=100,
             updated_at=datetime('now','localtime') WHERE id=?`)
             .run(m3u8Url, iframeUrl, thumbnailName, videoId);
 
@@ -1735,7 +1744,7 @@ router.post('/api/worker/done', (req, res) => {
     const iframeUrl = m3u8Url ? `/embed/${videoId}` : '';
     db.prepare(`UPDATE videos SET m3u8_url=?, iframe_url=?, thumbnail=?, status='ready', progress=100,
         updated_at=datetime('now','localtime') WHERE id=?`)
-        .run(m3u8Url, iframeUrl, thumbnailName || video.thumbnail || '', videoId);
+        .run(m3u8Url, iframeUrl, thumbnailUrl, videoId);
 
     const { encodeQueue } = require('../services/queue');
     encodeQueue.markRemoteDone(videoId);
