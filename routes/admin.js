@@ -1050,7 +1050,7 @@ router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
 
     // valid_referers directive
     const validReferers = hasRestriction
-        ? `\n        # Restrict hotlink to allowed domains\n        valid_referers none blocked ${embedDomains.map(d => '~\\.' + d.replace(/\./g, '\\.') + '($|/)').join(' ')};\n        if ($invalid_referer) { return 403; }\n`
+        ? `\n        # Restrict hotlink to allowed domains\n        valid_referers none blocked ${embedDomains.map(d => '~' + d.replace(/\./g, '\\.')).join(' ')};\n        if ($invalid_referer) { return 403; }\n`
         : '';
 
     // CORS add_header block (always = send even on 4xx)
