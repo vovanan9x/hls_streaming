@@ -1115,7 +1115,7 @@ router.get('/servers/add', requireAdmin, (req, res) => {
 router.post('/servers/add', requireAdmin, async (req, res) => {
     const db = getDb();
     const { label, ip, port, username, password, storage_path, cdn_url, use_png_camouflage } = req.body;
-    const pngCamouflage = use_png_camouflage === '1' ? 1 : 0;
+    const pngCamouflage = [].concat(use_png_camouflage ?? []).includes('1') ? 1 : 0;
 
     if (!label) {
         return res.render('admin/server-form', {
@@ -1149,7 +1149,7 @@ router.get('/servers/:id/edit', requireAdmin, (req, res) => {
 router.post('/servers/:id/edit', requireAdmin, async (req, res) => {
     const db = getDb();
     const { label, ip, port, username, password, storage_path, cdn_url, use_png_camouflage } = req.body;
-    const pngCamouflage = use_png_camouflage === '1' ? 1 : 0;
+    const pngCamouflage = [].concat(use_png_camouflage ?? []).includes('1') ? 1 : 0;
 
     if (!label) {
         const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
