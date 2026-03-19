@@ -4,9 +4,16 @@ const fs = require('fs');
 const session = require('express-session');
 const { getDb } = require('./database');
 const { startServerCheckCron } = require('./services/serverCheck');
+const { rateLimit } = require('./middleware/rateLimit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Cảnh báo nếu chưa set SESSION_SECRET
+if (!process.env.SESSION_SECRET) {
+    console.warn('⚠️  [SECURITY] SESSION_SECRET chưa được set! Sử dụng giá trị mặc định — KHÔNG AN TOÀN cho production.');
+    console.warn('   Set biến môi trường: SESSION_SECRET=<random-string-dài-32-ký-tự>');
+}
 
 // Create required directories
 ['uploads/videos', 'uploads/thumbnails', 'storage/hls', 'data'].forEach(dir => {
@@ -18,8 +25,8 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/public', express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/storage', express.static(path.join(__dirname, 'storage')));
@@ -57,7 +64,7 @@ const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/user');
 
-app.use('/auth', authRoutes);
+app.use('/auth', rateLimit(10, 'rate_limit_login', 'Quá nhiều lần thử, vui lòng đợi 1 phút.'), authRoutes);
 app.use('/admin', adminRoutes);
 
 // ── Worker callback endpoints (OUTSIDE /admin to avoid auth/nginx issues) ──
@@ -132,46 +139,54 @@ app.use('/api/worker', workerCallbackRouter);
 
 app.use('/', userRoutes);
 
-// Public API v1 (same handlers registered in adminRoutes via relative paths)
+// ── Public API v1 ──
 const apiRouter = require('express').Router();
-apiRouter.get('/videos', (req, res) => {
-    const auth = req.headers['authorization'] || ''; const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query.token;
+
+// Shared API token middleware — thay vì copy-paste 7 lần
+function requireApiToken(req, res, next) {
+    const auth = req.headers['authorization'] || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query.token;
     if (!token) return res.status(401).json({ error: 'Token bắt buộc' });
     const db = require('./database').getDb();
     const user = db.prepare('SELECT id FROM users WHERE api_token = ? AND is_active = 1').get(token);
     if (!user) return res.status(401).json({ error: 'Token không hợp lệ' });
+    req.apiUser = user;
+    next();
+}
+apiRouter.use(requireApiToken);
+apiRouter.use(rateLimit(30, 'rate_limit_api', 'API rate limit exceeded.'));
+
+apiRouter.get('/videos', (req, res) => {
+    const db = require('./database').getDb();
     const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.min(100, parseInt(req.query.limit) || 20), offset = (page - 1) * limit;
     const videos = db.prepare(`SELECT id,title,description,thumbnail,m3u8_url,iframe_url,qualities,created_at FROM videos WHERE status='ready' AND visibility='public' ORDER BY sort_order DESC, created_at DESC LIMIT ? OFFSET ?`).all(limit, offset);
     const total = db.prepare(`SELECT COUNT(*) as cnt FROM videos WHERE status='ready' AND visibility='public'`).get().cnt;
     res.json({ page, limit, total, videos });
 });
+
 apiRouter.get('/videos/:id', (req, res) => {
-    const auth = req.headers['authorization'] || ''; const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query.token;
-    if (!token) return res.status(401).json({ error: 'Token bắt buộc' });
     const db = require('./database').getDb();
-    if (!db.prepare('SELECT id FROM users WHERE api_token=? AND is_active=1').get(token)) return res.status(401).json({ error: 'Token không hợp lệ' });
     const v = db.prepare(`SELECT id,title,description,thumbnail,m3u8_url,iframe_url,qualities,created_at FROM videos WHERE id=? AND status='ready' AND visibility='public'`).get(req.params.id);
     if (!v) return res.status(404).json({ error: 'Không tìm thấy' });
     res.json(v);
 });
+
 apiRouter.get('/videos/:id/stream', (req, res) => {
-    const auth = req.headers['authorization'] || ''; const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query.token;
-    if (!token) return res.status(401).json({ error: 'Token bắt buộc' });
     const db = require('./database').getDb();
-    if (!db.prepare('SELECT id FROM users WHERE api_token=? AND is_active=1').get(token)) return res.status(401).json({ error: 'Token không hợp lệ' });
     const v = db.prepare(`SELECT m3u8_url FROM videos WHERE id=? AND status='ready' AND visibility='public'`).get(req.params.id);
     if (!v) return res.status(404).json({ error: 'Không tìm thấy' });
-    res.redirect(v.m3u8_url);
+    // Sign URL nếu có secret key (fix #9 — tránh bypass signed URL)
+    const { getSetting } = require('./database');
+    const { signUrl } = require('./services/signedUrl');
+    const secret = getSetting('signed_url_secret', '');
+    const ttlHours = parseInt(getSetting('signed_url_ttl', '4'), 10);
+    const url = secret ? signUrl(v.m3u8_url, secret, ttlHours * 3600) : v.m3u8_url;
+    res.redirect(url);
 });
 
 // POST /api/v1/upload/url — Upload từ URL trực tiếp (MP4, MKV, ...)
 apiRouter.post('/upload/url', async (req, res) => {
-    const auth = req.headers['authorization'] || ''; const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query.token;
-    if (!token) return res.status(401).json({ error: 'Token bắt buộc' });
     const db = require('./database').getDb();
-    const user = db.prepare('SELECT id FROM users WHERE api_token=? AND is_active=1').get(token);
-    if (!user) return res.status(401).json({ error: 'Token không hợp lệ' });
-
     const { url, title, description, server_id, qualities, visibility, folder_id } = req.body;
     if (!url) return res.status(400).json({ error: 'Thiếu tham số: url' });
     if (!title) return res.status(400).json({ error: 'Thiếu tham số: title' });
@@ -187,7 +202,7 @@ apiRouter.post('/upload/url', async (req, res) => {
         const q = qualities ? (Array.isArray(qualities) ? qualities : [qualities]) : ['720p'];
         const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM videos').get().m;
         const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order) VALUES (?,?,?,?,?,'queued',?,?,?)`);
-        const row = ins.run(title, description || '', result.fileName, server_id, user.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
+        const row = ins.run(title, description || '', result.fileName, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
         encodeQueue.push({ videoId: row.lastInsertRowid, videoFilePath: result.filePath, videoFileName: result.fileName, autoThumb: true, qualities: q });
         res.json({ ok: true, video_id: row.lastInsertRowid, status: 'queued', message: 'Video đã được thêm vào hàng đợi xử lý.' });
     } catch (e) {
@@ -197,12 +212,7 @@ apiRouter.post('/upload/url', async (req, res) => {
 
 // POST /api/v1/upload/drive — Upload từ Google Drive URL
 apiRouter.post('/upload/drive', async (req, res) => {
-    const auth = req.headers['authorization'] || ''; const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query.token;
-    if (!token) return res.status(401).json({ error: 'Token bắt buộc' });
     const db = require('./database').getDb();
-    const user = db.prepare('SELECT id FROM users WHERE api_token=? AND is_active=1').get(token);
-    if (!user) return res.status(401).json({ error: 'Token không hợp lệ' });
-
     const { drive_url, title, description, server_id, qualities, visibility } = req.body;
     if (!drive_url) return res.status(400).json({ error: 'Thiếu tham số: drive_url' });
     if (!title) return res.status(400).json({ error: 'Thiếu tham số: title' });
@@ -228,7 +238,7 @@ apiRouter.post('/upload/drive', async (req, res) => {
         const q = qualities ? (Array.isArray(qualities) ? qualities : [qualities]) : ['720p'];
         const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM videos').get().m;
         const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order) VALUES (?,?,?,?,?,'queued',?,?,?)`);
-        const row = ins.run(title, description || '', result.fileName, server_id, user.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
+        const row = ins.run(title, description || '', result.fileName, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
         encodeQueue.push({ videoId: row.lastInsertRowid, videoFilePath: result.filePath, videoFileName: result.fileName, autoThumb: true, qualities: q });
         res.json({ ok: true, video_id: row.lastInsertRowid, status: 'queued', message: 'Video từ Google Drive đã được thêm vào hàng đợi.' });
     } catch (e) {
@@ -238,10 +248,7 @@ apiRouter.post('/upload/drive', async (req, res) => {
 
 // GET /api/v1/upload/:id/status — Kiểm tra trạng thái xử lý video
 apiRouter.get('/upload/:id/status', (req, res) => {
-    const auth = req.headers['authorization'] || ''; const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query.token;
-    if (!token) return res.status(401).json({ error: 'Token bắt buộc' });
     const db = require('./database').getDb();
-    if (!db.prepare('SELECT id FROM users WHERE api_token=? AND is_active=1').get(token)) return res.status(401).json({ error: 'Token không hợp lệ' });
     const v = db.prepare('SELECT id,title,status,progress,m3u8_url,iframe_url,created_at FROM videos WHERE id=?').get(req.params.id);
     if (!v) return res.status(404).json({ error: 'Không tìm thấy video' });
     res.json(v);
@@ -254,6 +261,13 @@ app.use('/api/v1', apiRouter);
 // Home redirect
 app.get('/', (req, res) => {
     res.redirect('/admin/videos');
+});
+
+// Global error handler — tránh leak stack trace
+app.use((err, req, res, next) => {
+    console.error('[Global Error]', err.message, err.stack);
+    if (res.headersSent) return next(err);
+    res.status(500).json({ error: 'Internal Server Error' });
 });
 
 // Initialize database

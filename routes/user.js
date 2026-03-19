@@ -4,23 +4,6 @@ const crypto = require('crypto');
 const { getDb, getSetting } = require('../database');
 const { signUrl } = require('../services/signedUrl');
 const { pingViewer } = require('../services/viewers');
-const { proxyFetch, allowDomain } = require('../services/hlsProxy');
-
-// GET /proxy/hls - Proxy m3u8/ts để tránh CORS (R2, CDN)
-router.get('/proxy/hls', async (req, res) => {
-    const url = req.query.url;
-    if (!url) return res.status(400).send('Thiếu tham số url');
-    const proxyPath = req.protocol + '://' + req.get('host') + req.path + '?url=';
-    try {
-        const { data, contentType } = await proxyFetch(url, proxyPath);
-        res.set('Content-Type', contentType);
-        res.set('Cache-Control', url.includes('.m3u8') ? 'no-cache' : 'public, max-age=3600');
-        res.send(data);
-    } catch (e) {
-        console.error('[Proxy]', e.message);
-        res.status(502).send('Lỗi proxy: ' + e.message);
-    }
-});
 
 // GET /embed/:videoId - Embed player by video ID (chỉ video ready + public)
 router.get('/embed/:videoId', (req, res) => {

@@ -434,6 +434,15 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
             });
         }
         db.prepare("UPDATE videos SET status='error', updated_at=datetime('now','localtime') WHERE id=?").run(videoId);
+        // Cleanup: xoá file video gốc khi encode thất bại để tiết kiệm dung lượng
+        try {
+            if (fs.existsSync(videoFilePath)) {
+                fs.unlinkSync(videoFilePath);
+                console.log(`[Cleanup] Deleted failed video file: ${videoFilePath}`);
+            }
+        } catch (cleanupErr) {
+            console.error(`[Cleanup] Failed to delete: ${cleanupErr.message}`);
+        }
     }
 }
 
@@ -1340,6 +1349,8 @@ router.get('/settings', requireAdmin, (req, res) => {
         driveServiceEmail,
         signedUrlSecret: getSetting('signed_url_secret', ''),
         signedUrlTtl: getSetting('signed_url_ttl', '4'),
+        rateLimitLogin: getSetting('rate_limit_login', '10'),
+        rateLimitApi: getSetting('rate_limit_api', '30'),
         success: req.query.saved ? 'Đã lưu cài đặt!' : null,
         error: null,
     });
@@ -1391,6 +1402,16 @@ router.post('/settings/page-size', requireAdmin, (req, res) => {
     if (!isNaN(n) && n >= 5 && n <= 200) {
         setSetting('admin_page_size', String(n));
     }
+    res.redirect('/admin/settings?saved=1');
+});
+
+// POST /admin/settings/rate-limit — Save rate limit settings
+router.post('/settings/rate-limit', requireAdmin, (req, res) => {
+    const loginLimit = parseInt(req.body.rate_limit_login) || 10;
+    const apiLimit = parseInt(req.body.rate_limit_api) || 30;
+    setSetting('rate_limit_login', String(Math.max(1, Math.min(1000, loginLimit))));
+    setSetting('rate_limit_api', String(Math.max(1, Math.min(1000, apiLimit))));
+    console.log(`[Settings] Rate limit: login=${loginLimit}/min, api=${apiLimit}/min`);
     res.redirect('/admin/settings?saved=1');
 });
 
@@ -1899,7 +1920,6 @@ router.post('/workers/:idx/delete', requireAdmin, (req, res) => {
     }
     res.redirect('/admin/workers?msg=deleted');
 });
-
 
 
 module.exports = router;
