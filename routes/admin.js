@@ -503,46 +503,59 @@ encodeQueue.setProcessor(processVideo);
 
 // ── Worker Poller (global, 1 timer duy nhất) ──────────────────────────────
 // Thay vì setTimeout per-job, dùng 1 poller check workers định kỳ.
-// Khi worker rảnh → lấy video 'queued' tiếp theo trong DB → dispatch.
+// Khi có worker rảnh → lấy video 'queued' tiếp → push vào encodeQueue.
+// Parallel: nếu có 2 workers rảnh, poller có thể push 2 jobs cùng lúc.
 (function startWorkerPoller() {
     const POLL_INTERVAL = 30 * 1000; // 30 giây
     setInterval(async () => {
         try {
             const { encodeQueue } = require('../services/queue');
-            // Chỉ chạy nếu không có job nào đang dispatching
-            if (encodeQueue.remoteJobs.size > 0) return;
+            const { getWorkers, pingWorker } = require('../services/workerPool');
 
-            const worker = await workerPool.findIdleWorker();
-            if (!worker) return; // Không có worker rảnh
-
+            // Build danh sách videoId đã có trong queue/remoteJobs (tránh push duplicate)
             const db2 = getDb();
-            // Lấy video queued cũ nhất chưa có trong encodeQueue
             const queuedIds = new Set([
                 ...[...encodeQueue.queue].map(j => j.videoId),
                 encodeQueue.currentId,
                 ...[...encodeQueue.remoteJobs.keys()]
             ].filter(Boolean));
 
-            const next = db2.prepare(`
+            // Lấy tất cả videos queued chưa có trong encodeQueue
+            const pendingVideos = db2.prepare(`
                 SELECT id, qualities, thumbnail, video_file
                 FROM videos WHERE status = 'queued'
                 ORDER BY sort_order ASC, id ASC LIMIT 20
-            `).all().find(v => !queuedIds.has(v.id));
+            `).all().filter(v => !queuedIds.has(v.id));
 
-            if (!next) return; // Không có video queued nào đang chờ
+            if (!pendingVideos.length) return; // Không có gì cần dispatch
 
-            let qualities = ['sd'];
-            try { qualities = JSON.parse(next.qualities || '["sd"]'); } catch (e) {}
+            // Kiểm tra từng worker — nếu rảnh thì push 1 job cho nó
+            const workers = getWorkers();
+            for (const w of workers) {
+                if (!pendingVideos.length) break;
 
-            console.log(`[WorkerPoller] Found idle worker, dispatching videoId=${next.id}...`);
-            encodeQueue.push({
-                videoId: next.id,
-                videoFilePath: null,
-                videoFileName: null,
-                autoThumb: !next.thumbnail,
-                qualities,
-                sourceUrl: next.video_file || null
-            });
+                // Bỏ qua worker đang có job trong remoteJobs
+                const workerBusy = [...encodeQueue.remoteJobs.values()].some(j => j.worker?.url === w.url);
+                if (workerBusy) continue;
+
+                const status = await pingWorker(w);
+                if (!status.reachable || status.busy) continue;
+
+                // Worker rảnh → push job tiếp theo
+                const next = pendingVideos.shift();
+                let qualities = ['sd'];
+                try { qualities = JSON.parse(next.qualities || '[\"sd\"]'); } catch (e) {}
+
+                console.log(`[WorkerPoller] Worker ${w.label} idle → pushing videoId=${next.id}`);
+                encodeQueue.push({
+                    videoId: next.id,
+                    videoFilePath: null,
+                    videoFileName: null,
+                    autoThumb: !next.thumbnail,
+                    qualities,
+                    sourceUrl: next.video_file || null
+                });
+            }
         } catch (e) {
             console.error('[WorkerPoller] Error:', e.message);
         }

@@ -2,12 +2,14 @@
  * services/queue.js
  * FIFO encode queue — hỗ trợ:
  *   - Local encode (fallback khi không có worker)
- *   - Remote worker dispatch (qua processVideo → dispatchFileToWorker)
+ *   - Remote worker dispatch song song: N workers → N jobs đồng thời
  *   - Cancel job đang chạy hoặc đang chờ
  *
- * NOTE: Việc tìm worker và dispatch file sang worker được xử lý
- *       bởi processVideo() trong routes/admin.js, KHÔNG phải ở đây.
- *       Queue chỉ đơn giản là lên lịch và gọi processor tuần tự.
+ * Parallel model:
+ *   - remoteJobs: Map(videoId → { worker, dispatchedAt }) — tất cả jobs đang chạy song song
+ *   - localRunning: boolean — chỉ 1 local job tại 1 thời điểm
+ *   - _next() được gọi liên tục để fill slots trống trên các workers
+ *   - Số concurrent = số worker đang rảnh (tự điều chỉnh động)
  */
 
 const EventEmitter = require('events');
@@ -15,17 +17,22 @@ const EventEmitter = require('events');
 class EncodeQueue extends EventEmitter {
     constructor() {
         super();
-        this.queue = [];            // pending jobs
-        this.running = false;       // đang encode local hoặc dispatching
-        this.current = null;        // videoId đang xử lý
+        this.queue = [];                // pending jobs (FIFO)
+        this.localRunning = false;      // đang encode local
+        this.current = null;            // videoId đang encode local
         this._cancelled = new Set();
-        this.remoteJobs = new Map(); // videoId → { worker, job, dispatchedAt }
+        this.remoteJobs = new Map();    // videoId → { worker, dispatchedAt }
+        this._dispatching = false;      // mutex để tránh race condition khi _next() gọi song song
     }
 
     push(job) {
+        // Bỏ qua nếu video đã có trong queue hoặc đang remote encode
+        if (this.queue.some(j => j.videoId === job.videoId)) return 0;
+        if (this.remoteJobs.has(job.videoId)) return 0;
+
         this.queue.push(job);
         const pos = this.queue.length - 1;
-        console.log(`[Queue] Video ${job.videoId} added at position ${pos + (this.running ? 1 : 0)}`);
+        console.log(`[Queue] Video ${job.videoId} added at position ${pos + 1} | queue=${this.queue.length} | remoteActive=${this.remoteJobs.size}`);
         this._next();
         return pos;
     }
@@ -45,6 +52,7 @@ class EncodeQueue extends EventEmitter {
             cancelOnWorker(worker, videoId).catch(() => { });
             this.remoteJobs.delete(videoId);
             console.log(`[Queue] Cancelled remote job videoId=${videoId}`);
+            this._next(); // slot vừa trống → dispatch job tiếp
             return 'cancelled_running';
         }
 
@@ -71,58 +79,84 @@ class EncodeQueue extends EventEmitter {
     isCancelled(videoId) { return this._cancelled.has(videoId); }
     clearCancel(videoId) { this._cancelled.delete(videoId); }
 
-    /** Gọi khi worker báo xong (từ callback route) */
+    /**
+     * Gọi khi remote worker báo xong — giải phóng slot, dispatch job tiếp ngay
+     */
     markRemoteDone(videoId) {
+        const hadJob = this.remoteJobs.has(videoId);
         this.remoteJobs.delete(videoId);
-        // Cho phép queue tiếp tục xử lý job tiếp theo
-        if (!this.running) {
-            this._next();
+        if (hadJob) {
+            console.log(`[Queue] Remote slot freed (videoId=${videoId}) | remoteActive=${this.remoteJobs.size} | queued=${this.queue.length}`);
+            this._next(); // fill slot vừa trống
         }
     }
 
+    /**
+     * Drive the queue: dispatch as many jobs as there are free worker slots.
+     * Dùng mutex (_dispatching) để tránh race condition khi nhiều markRemoteDone
+     * gọi _next() cùng lúc.
+     */
     async _next() {
+        if (this._dispatching) return; // đang trong _next() rồi
         if (this.queue.length === 0) return;
-        if (this.running) return; // đang xử lý job khác
 
-        this.running = true;
-        const job = this.queue.shift();
-        this.current = job.videoId;
-
-        if (this._cancelled.has(job.videoId)) {
-            this._cancelled.delete(job.videoId);
-            this.running = false;
-            this.current = null;
-            this._next();
-            return;
-        }
-
-        console.log(`[Queue] Processing videoId=${job.videoId} (${this.queue.length} remaining in queue)`);
-        this.emit('start', job.videoId);
-
+        this._dispatching = true;
         try {
-            // processVideo() sẽ tự quyết định: dispatch sang worker hay encode local
-            await this._processVideo(job.videoId, job.videoFilePath, job.videoFileName, job.autoThumb, job.qualities, job.sourceUrl);
-
-            // Nếu processVideo() return sớm (dispatched sang worker),
-            // remoteJobs sẽ có entry → đánh dấu là đang chờ callback.
-            // Nếu job được dispatch sang worker, ta vẫn cho queue chạy tiếp
-            // (worker xử lý song song — markRemoteDone() sẽ gọi _next() sau)
-            if (!this.remoteJobs.has(job.videoId)) {
-                // Encode local đã xong
-                this.emit('done', job.videoId);
-            }
-            // Nếu đang ở remoteJobs → callback của worker sẽ emit done sau
-        } catch (err) {
-            if (this._cancelled.has(job.videoId)) {
-                this._cancelled.delete(job.videoId);
-            } else {
-                console.error(`[Queue] Video ${job.videoId} failed:`, err.message);
-                this.emit('error', job.videoId, err);
-            }
+            await this._drainQueue();
         } finally {
-            this.running = false;
-            this.current = null;
-            this._next(); // xử lý job tiếp theo trong queue
+            this._dispatching = false;
+        }
+    }
+
+    async _drainQueue() {
+        while (this.queue.length > 0) {
+            const job = this.queue[0]; // peek, chưa shift
+
+            if (this._cancelled.has(job.videoId)) {
+                this.queue.shift();
+                this._cancelled.delete(job.videoId);
+                continue;
+            }
+
+            // Local encode: chỉ 1 job tại 1 lúc
+            if (this.localRunning) break;
+
+            this.queue.shift(); // lấy ra khỏi queue
+            this.emit('start', job.videoId);
+            console.log(`[Queue] Processing videoId=${job.videoId} | queue=${this.queue.length} | remoteActive=${this.remoteJobs.size}`);
+
+            try {
+                await this._processVideo(
+                    job.videoId, job.videoFilePath, job.videoFileName,
+                    job.autoThumb, job.qualities, job.sourceUrl
+                );
+
+                if (this.remoteJobs.has(job.videoId)) {
+                    // Dispatched sang remote worker → không block, tiếp tục drain
+                    // Slot sẽ được giải phóng khi markRemoteDone() được gọi
+                    console.log(`[Queue] videoId=${job.videoId} dispatched to remote | active=${this.remoteJobs.size}`);
+                    // Tiếp tục loop để dispatch job tiếp vào worker khác nếu còn rảnh
+                    continue;
+                } else {
+                    // Local encode xong
+                    this.emit('done', job.videoId);
+                    this.localRunning = false;
+                    this.current = null;
+                }
+            } catch (err) {
+                this.localRunning = false;
+                this.current = null;
+                if (this._cancelled.has(job.videoId)) {
+                    this._cancelled.delete(job.videoId);
+                } else {
+                    console.error(`[Queue] Video ${job.videoId} failed:`, err.message);
+                    this.emit('error', job.videoId, err);
+                }
+            }
+
+            // Sau local encode → chỉ encode 1 local job rồi break
+            // (sẽ resume khi local xong)
+            break;
         }
     }
 
