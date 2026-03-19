@@ -372,6 +372,8 @@
 </div><!-- /vp-wrap -->
 
 <% if (m3u8Url) { %>
+<%# Preload m3u8 để browser fetch sớm trước khi JS load - giảm time-to-first-frame %>
+<link rel="preload" href="<%- m3u8Url %>" as="fetch" crossorigin="anonymous">
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 <script>
 (function () {
@@ -429,7 +431,25 @@
   // ── HLS init ──────────────────────────────────────────────
   let hls;
   if (Hls.isSupported()) {
-    hls = new Hls({ enableWorker: true, lowLatencyMode: false });
+    hls = new Hls({
+      enableWorker:             true,
+      lowLatencyMode:           false,
+      // Buffer: tăng để tránh stutter trên mạng chậm
+      maxBufferLength:          60,        // giây tối đa buffer
+      maxMaxBufferLength:       120,       // hard cap
+      maxBufferSize:            60 * 1e6,  // 60 MB
+      maxBufferHole:            0.5,       // cho phép lỗ nhỏ trong buffer
+      // ABR (Adaptive Bitrate)
+      abrEwmaDefaultEstimate:   1500000,  // estimate khởi tạo 1.5 Mbps
+      abrBandWidthFactor:       0.95,     // dùng 95% bandwidth ước tính
+      abrBandWidthUpFactor:     0.7,      // thận trọng khi upswitch quality
+      startLevel:               -1,       // auto chọn quality đầu tiên
+      // Loading
+      manifestLoadingMaxRetry:  3,
+      levelLoadingMaxRetry:     4,
+      fragLoadingMaxRetry:      6,
+      fragLoadingRetryDelay:    1000,
+    });
     hls.loadSource(M3U8_URL);
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED, function (_, data) {

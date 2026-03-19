@@ -27,6 +27,13 @@ router.get('/embed/:videoId', (req, res) => {
     const ttlHours = parseInt(getSetting('signed_url_ttl', '4'), 10);
     const m3u8Url = secret ? signUrl(video.m3u8_url, secret, ttlHours * 3600) : video.m3u8_url;
 
+    // Cache embed page 30s (stale-while-revalidate cho CDN edge)
+    // Không cache nếu có signed URL (token thay đổi mỗi request)
+    if (!secret) {
+        res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
+    } else {
+        res.setHeader('Cache-Control', 'private, no-store');
+    }
     res.render('user/player', {
         title: video.title,
         m3u8Url,

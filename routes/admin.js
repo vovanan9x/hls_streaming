@@ -1122,6 +1122,8 @@ ${validReferers}        types { }
         default_type application/vnd.apple.mpegurl;
 ${rateLimitDirectives}
 ${m3u8SubFilter}
+        gzip on;
+        gzip_types application/vnd.apple.mpegurl text/plain application/x-mpegURL;
         add_header Cache-Control "no-cache, no-store, must-revalidate" always;
 ${cors}
     }`;
