@@ -1,4 +1,4 @@
-<%- include('../partials/header') %>
+﻿<%- include('../partials/header') %>
 
 <% if (success) { %>
 <script>window.__pageToast = { msg: <%- JSON.stringify(success) %>, type: 'success' };</script>
@@ -139,6 +139,44 @@
   </div>
 </div>
 
+<!-- ═══════ SECTION: Bảo mật Embed ═══════ -->
+<div class="settings-section">
+  <div class="section-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    Kiểm soát Embed / Hotlink
+  </div>
+
+  <div class="setting-card">
+    <h4><span class="icon">🌐</span> Domain được phép Embed</h4>
+    <p class="desc">
+      Chỉ cho phép các website trong danh sách nhúng player hoặc fetch file <code>.m3u8</code>.<br>
+      Để trống = <strong>công khai</strong>. Mỗi dòng 1 domain, không cần <code>https://</code>.<br>
+      VD: <code>ahay.stream</code><br>
+      <span style="color:#94a3b8;">Áp dụng qua Nginx <code>valid_referers</code> + CORS — regenerate Nginx config sau khi lưu.</span>
+    </p>
+
+    <% if (embedAllowedDomains) { %>
+      <span class="status-pill on" style="margin-bottom:12px;display:inline-flex;">🔒 Chỉ cho: <%= embedAllowedDomains.split('\n').join(', ') %></span>
+    <% } else { %>
+      <span class="status-pill off" style="margin-bottom:12px;display:inline-flex;">⚠ Công khai — mọi website đều có thể embed</span>
+    <% } %>
+
+    <form action="/admin/settings/embed-domains" method="POST">
+      <div style="margin-bottom:12px;">
+        <textarea name="embed_allowed_domains" rows="4"
+          style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:monospace;font-size:12.5px;color:var(--text-primary);resize:vertical;"
+          placeholder="ahay.stream&#10;partnerdomain.com&#10;another.vn"><%= embedAllowedDomains %></textarea>
+      </div>
+      <div class="setting-row">
+        <button type="submit" class="btn btn-primary btn-sm">💾 Lưu</button>
+        <% if (embedAllowedDomains) { %>
+          <button type="button" class="btn btn-ghost btn-sm" style="color:#f87171;"
+            onclick="this.closest('form').querySelector('textarea').value='';this.closest('form').submit();">🔓 Xóa giới hạn</button>
+        <% } %>
+      </div>
+    </form>
+  </div>
+</div>
 <!-- ═══════ SECTION: Tích hợp ═══════ -->
 <div class="settings-section">
   <div class="section-title">

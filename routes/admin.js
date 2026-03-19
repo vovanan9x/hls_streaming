@@ -1021,28 +1021,49 @@ router.get('/api/servers/least-loaded', requireUploader, (req, res) => {
     res.json({ ok: true, server: { id: server.id, label: server.label, ip: server.ip, video_count: server.video_count } });
 });
 
-// GET /admin/api/servers/:id/nginx-config - Generate Nginx config cho server
+// GET /admin/api/servers/:id/nginx-config - Generate Nginx config
 router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
     const db = getDb();
     const s = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
     if (!s) return res.status(404).send('Server khong ton tai');
 
     const { getSetting } = require('../database');
-    const bwLimit      = s.bandwidth_limit || '1m';
-    const usePng       = s.use_png_camouflage !== 0;
-    const signedSecret = getSetting('signed_url_secret', '');
+    const bwLimit     = s.bandwidth_limit || '1m';
+    const usePng      = s.use_png_camouflage !== 0;
 
-    // CORS headers voi "always" -> xuat hien ca tren 4xx/5xx response
+    // Allowed embed domains setting
+    const embedDomainRaw = getSetting('embed_allowed_domains', '');
+    const embedDomains   = embedDomainRaw
+        ? embedDomainRaw.split('\n').map(d => d.trim()).filter(Boolean)
+        : [];
+    const hasRestriction = embedDomains.length > 0;
+
+    // Build map block for dynamic CORS origin (only when restriction active)
+    let originMapBlock = '';
+    if (hasRestriction) {
+        const mapLines = embedDomains
+            .map(d => `    "~*^https?://(www\\.)?${d.replace(/\./g, '\\.')}(:[0-9]+)?$" $http_origin;`)
+            .join('\n');
+        originMapBlock = `map $http_origin $cors_allow_origin {\n    default "";\n${mapLines}\n}\n\n`;
+    }
+    const corsOriginValue = hasRestriction ? '$cors_allow_origin' : '"*"';
+
+    // valid_referers directive
+    const validReferers = hasRestriction
+        ? `\n        # Restrict hotlink to allowed domains\n        valid_referers none blocked ${embedDomains.map(d => '~\\.' + d.replace(/\./g, '\\.') + '($|/)').join(' ')};\n        if ($invalid_referer) { return 403; }\n`
+        : '';
+
+    // CORS add_header block (always = send even on 4xx)
     const cors = `
-        add_header Access-Control-Allow-Origin  "*" always;
+        add_header Access-Control-Allow-Origin  ${corsOriginValue} always;
         add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
         add_header Access-Control-Allow-Headers "Range, Origin, Accept" always;
         add_header Access-Control-Expose-Headers "Content-Range, Content-Length" always;`;
 
-    // OPTIONS preflight block (dung chung cho ca .png va .m3u8)
-    const optionsPreflight = `
+    // OPTIONS preflight
+    const preflight = `
         if ($request_method = OPTIONS) {
-            add_header Access-Control-Allow-Origin  "*";
+            add_header Access-Control-Allow-Origin  ${corsOriginValue};
             add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
             add_header Access-Control-Allow-Headers "Range, Origin, Accept";
             add_header Access-Control-Max-Age 86400;
@@ -1050,15 +1071,10 @@ router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
             return 204;
         }`;
 
-    // NOTE: secure_link trong Nginx KHÔNG dùng cho m3u8 vì hls.js
-    // fetch variant playlists (hd/sd/...) không kèm token → 403.
-    // Bảo vệ Signed URL được xử lý ở tầng Node.js khi tạo URL.
-    const secureLink = '';
-
     const segmentBlock = usePng ? `
-    # TS segments phuc vu duoi URL .png (camouflage)
+    # TS segments served as .png (camouflage)
     location ~* ^/hls/([^/]+)/([^/]+)/(.+)\\.png$ {
-${optionsPreflight}
+${preflight}
         try_files /hls/$1/$2/$3.ts =404;
         types { }
         default_type image/png;
@@ -1068,9 +1084,9 @@ ${cors}
         limit_rate_after 2m;
         limit_rate ${bwLimit};
     }` : `
-    # TS segments phuc vu truc tiep (khong camouflage)
+    # TS segments served directly
     location ~* \\.ts$ {
-${optionsPreflight}
+${preflight}
         types { }
         default_type video/mp2t;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
@@ -1086,17 +1102,17 @@ ${cors}
         sub_filter_types application/vnd.apple.mpegurl text/plain;` : '';
 
     const m3u8Block = `
-    # M3U8 playlists${usePng ? ' (thay .ts -> .png)' : ''}
+    # M3U8 playlists${usePng ? ' (sub .ts->.png)' : ''}
     location ~* \\.m3u8$ {
-${optionsPreflight}
-        types { }
+${preflight}
+${validReferers}        types { }
         default_type application/vnd.apple.mpegurl;
 ${m3u8SubFilter}
         add_header Cache-Control "no-cache, no-store, must-revalidate" always;
 ${cors}
-${secureLink}    }`;
+    }`;
 
-    const config = `server {
+    const config = `${originMapBlock}server {
     listen 80;
     server_name _;
 
@@ -1417,6 +1433,7 @@ router.get('/settings', requireAdmin, (req, res) => {
         signedUrlTtl: getSetting('signed_url_ttl', '4'),
         rateLimitLogin: getSetting('rate_limit_login', '10'),
         rateLimitApi: getSetting('rate_limit_api', '30'),
+        embedAllowedDomains: getSetting('embed_allowed_domains', ''),
         success: req.query.saved ? 'Đã lưu cài đặt!' : null,
         error: null,
     });
@@ -1449,6 +1466,18 @@ router.post('/settings/signed-url', requireAdmin, (req, res) => {
     res.redirect('/admin/settings?saved=1');
 });
 
+
+// POST /admin/settings/embed-domains -- Luu danh sach domain duoc phep embed
+router.post('/settings/embed-domains', requireAdmin, (req, res) => {
+    const raw = (req.body.embed_allowed_domains || '');
+    const normalized = raw.split(/[\r\n,]+/)
+        .map(d => d.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+        .filter(d => d.length > 0)
+        .join('\n');
+    setSetting('embed_allowed_domains', normalized);
+    console.log('[Settings] embed_allowed_domains:', normalized || '(empty=public)');
+    res.redirect('/admin/settings?saved=1');
+});
 // POST /admin/settings/gdrive-sa/remove — Remove Service Account
 router.post('/settings/gdrive-sa/remove', requireAdmin, (req, res) => {
     setSetting('gdrive_service_account', '');
