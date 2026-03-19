@@ -508,7 +508,7 @@ encodeQueue.setProcessor(processVideo);
     const POLL_INTERVAL = 30 * 1000; // 30 giây
     setInterval(async () => {
         try {
-            const { encodeQueue } = require('./services/queue');
+            const { encodeQueue } = require('../services/queue');
             // Chỉ chạy nếu không có job nào đang dispatching
             if (encodeQueue.remoteJobs.size > 0) return;
 
@@ -1882,7 +1882,7 @@ router.post('/api/worker/done', (req, res) => {
     }
     encodeQueue.markRemoteDone(videoId);
     // Ngay lap tuc dispatch video queued tiep theo (khong cho poller 30s)
-    setImmediate(async () => {
+    setTimeout(async () => {
         try {
             const queuedIds = new Set([
                 ...[...encodeQueue.queue].map(j => j.videoId),
@@ -1899,7 +1899,7 @@ router.post('/api/worker/done', (req, res) => {
                 encodeQueue.push({ videoId: next.id, videoFilePath: null, videoFileName: null, autoThumb: !next.thumbnail, qualities: q, sourceUrl: next.video_file || null });
             }
         } catch (e) { console.error('[WorkerDone] Next dispatch error:', e.message); }
-    });
+    }, 2000);
 
     console.log(`[Worker Callback] Video ${videoId} DONE → ${m3u8Url}`);
 
