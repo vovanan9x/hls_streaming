@@ -226,6 +226,21 @@
     }
     #vp-toast.show { opacity: 1; }
 
+    /* Buffering spinner */
+    #vp-spinner {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 52px; height: 52px;
+      z-index: 25; pointer-events: none;
+      opacity: 0; transition: opacity .2s;
+    }
+    #vp-spinner.show { opacity: 1; }
+    #vp-spinner svg {
+      width: 52px; height: 52px;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     @media (max-width: 480px) {
       #vp-vol-wrap { display: none; }
       #vp-quality { display: none; }
@@ -260,6 +275,21 @@
 
   <!-- Screenshot flash -->
   <div id="vp-flash"></div>
+
+  <!-- Buffering spinner -->
+  <div id="vp-spinner">
+    <svg viewBox="0 0 50 50" fill="none">
+      <circle cx="25" cy="25" r="20" stroke="rgba(255,255,255,0.15)" stroke-width="4"/>
+      <circle cx="25" cy="25" r="20" stroke="url(#sg)" stroke-width="4"
+        stroke-linecap="round" stroke-dasharray="40 90"/>
+      <defs>
+        <linearGradient id="sg" x1="0" y1="0" x2="50" y2="50" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#6366f1"/>
+          <stop offset="100%" stop-color="#818cf8"/>
+        </linearGradient>
+      </defs>
+    </svg>
+  </div>
 
   <!-- Toast -->
   <div id="vp-toast">
@@ -383,6 +413,18 @@
   const seekTip   = document.getElementById('vp-seek-tooltip');
   const rplBack   = document.getElementById('rpl-back');
   const rplFwd    = document.getElementById('rpl-fwd');
+  const spinner   = document.getElementById('vp-spinner');
+
+  // ── Buffering spinner ─────────────────────────────────────
+  function showSpinner() { spinner && spinner.classList.add('show'); }
+  function hideSpinner() { spinner && spinner.classList.remove('show'); }
+  video.addEventListener('waiting',  showSpinner);
+  video.addEventListener('seeking',  showSpinner);
+  video.addEventListener('canplay',  hideSpinner);
+  video.addEventListener('playing',  hideSpinner);
+  video.addEventListener('seeked',   hideSpinner);
+  video.addEventListener('stalled',  showSpinner);
+  video.addEventListener('error',    hideSpinner);
 
   // ── HLS init ──────────────────────────────────────────────
   let hls;
@@ -392,10 +434,12 @@
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED, function (_, data) {
       // Build quality options
-      quality.innerHTML = '<option value="-1">Auto</option>';
+      quality.innerHTML = '<option value="-1">🔄 Auto</option>';
       data.levels.forEach(function (lv, i) {
-        const label = lv.height ? lv.height + 'p' : 'Level ' + i;
-        const opt = document.createElement('option');
+        var h = lv.height || 0;
+        var tag = h >= 2160 ? '4K' : h >= 1440 ? '2K' : h >= 1080 ? 'FHD' : h >= 720 ? 'HD' : h > 0 ? 'SD' : 'L' + i;
+        var label = h > 0 ? tag + ' · ' + h + 'p' : tag;
+        var opt = document.createElement('option');
         opt.value = i; opt.textContent = label;
         quality.appendChild(opt);
       });
