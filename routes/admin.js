@@ -1890,12 +1890,12 @@ router.post('/api/worker/done', (req, res) => {
                 ...[...encodeQueue.remoteJobs.keys()]
             ].filter(Boolean));
             const db2 = getDb();
-            const rows = db2.prepare(SELECT id, qualities, thumbnail, video_file FROM videos WHERE status = 'queued' ORDER BY sort_order ASC, id ASC LIMIT 20).all();
+            const rows = db2.prepare("SELECT id, qualities, thumbnail, video_file FROM videos WHERE status = 'queued' ORDER BY sort_order ASC, id ASC LIMIT 20").all();
             const next = rows.find(v => !queuedIds.has(v.id));
             if (next) {
                 let q = ['sd'];
                 try { q = JSON.parse(next.qualities || '["sd"]'); } catch (e) {}
-                console.log([WorkerDone] Dispatching next queued videoId= + next.id);
+                console.log('[WorkerDone] Dispatching next queued videoId=' + next.id);
                 encodeQueue.push({ videoId: next.id, videoFilePath: null, videoFileName: null, autoThumb: !next.thumbnail, qualities: q, sourceUrl: next.video_file || null });
             }
         } catch (e) { console.error('[WorkerDone] Next dispatch error:', e.message); }
