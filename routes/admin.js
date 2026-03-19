@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
@@ -1025,65 +1025,79 @@ router.get('/api/servers/least-loaded', requireUploader, (req, res) => {
 router.get('/api/servers/:id/nginx-config', requireAdmin, (req, res) => {
     const db = getDb();
     const s = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
-    if (!s) return res.status(404).send('Server không tồn tại');
+    if (!s) return res.status(404).send('Server khong ton tai');
 
     const { getSetting } = require('../database');
-    const bwLimit = s.bandwidth_limit || '1m';
-    const usePng = s.use_png_camouflage !== 0;
+    const bwLimit      = s.bandwidth_limit || '1m';
+    const usePng       = s.use_png_camouflage !== 0;
     const signedSecret = getSetting('signed_url_secret', '');
 
-    // Directives xác thực Signed URL — chèn vào M3U8 block nếu đã cấu hình secret
-    // Token format khớp với services/signedUrl.js: md5($arg_expires$uri " " SECRET) → base64url
+    // CORS headers voi "always" -> xuat hien ca tren 4xx/5xx response
+    const cors = `
+        add_header Access-Control-Allow-Origin  "*" always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Range, Origin, Accept" always;
+        add_header Access-Control-Expose-Headers "Content-Range, Content-Length" always;`;
+
+    // OPTIONS preflight block (dung chung cho ca .png va .m3u8)
+    const optionsPreflight = `
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin  "*";
+            add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+            add_header Access-Control-Allow-Headers "Range, Origin, Accept";
+            add_header Access-Control-Max-Age 86400;
+            add_header Content-Length 0;
+            return 204;
+        }`;
+
+    // Signed URL — chen vao M3U8 block neu da cau hinh secret
     const secureLink = signedSecret ? `
         # Signed URL validation
         secure_link $arg_token,$arg_expires;
         secure_link_md5 "$arg_expires$uri ${signedSecret}";
-        if ($secure_link = "")  { return 403; }  # token sai hoặc không có
-        if ($secure_link = "0") { return 410; }  # token hết hạn
+        if ($secure_link = "")  { return 403; }
+        if ($secure_link = "0") { return 410; }
 ` : '';
 
-    // Block phục vụ video segments — khác nhau tùy chế độ camouflage
     const segmentBlock = usePng ? `
-    # .png URLs → .ts segments (CF Worker sẽ sửa Content-Type)
-    location ~* ^/hls/([^/]+)/([^/]+)/(.+)\.png$ {
+    # TS segments phuc vu duoi URL .png (camouflage)
+    location ~* ^/hls/([^/]+)/([^/]+)/(.+)\\.png$ {
+${optionsPreflight}
         try_files /hls/$1/$2/$3.ts =404;
         types { }
         default_type image/png;
-        add_header Cache-Control "public, max-age=31536000, immutable";
-        add_header Access-Control-Allow-Origin "*";
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+${cors}
         access_log off;
         limit_rate_after 2m;
         limit_rate ${bwLimit};
     }` : `
-    # .ts segments — serve trực tiếp (không camouflage)
-    location ~* \.ts$ {
+    # TS segments phuc vu truc tiep (khong camouflage)
+    location ~* \\.ts$ {
+${optionsPreflight}
         types { }
         default_type video/mp2t;
-        add_header Cache-Control "public, max-age=31536000, immutable";
-        add_header Access-Control-Allow-Origin "*";
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+${cors}
         access_log off;
         limit_rate_after 2m;
         limit_rate ${bwLimit};
     }`;
 
-    // Block M3U8 — sub_filter + secure_link nếu có secret
-    const m3u8Block = usePng ? `
-    # M3U8 playlists — thay .ts → .png trong nội dung playlist
-    location ~* \.m3u8$ {
-        types { }
-        default_type application/vnd.apple.mpegurl;
+    const m3u8SubFilter = usePng ? `
         sub_filter '.ts' '.png';
         sub_filter_once off;
-        sub_filter_types application/vnd.apple.mpegurl text/plain;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-        add_header Access-Control-Allow-Origin "*";
-${secureLink}    }` : `
-    # M3U8 playlists — serve nguyên bản (không thay đuôi)
-    location ~* \.m3u8$ {
+        sub_filter_types application/vnd.apple.mpegurl text/plain;` : '';
+
+    const m3u8Block = `
+    # M3U8 playlists${usePng ? ' (thay .ts -> .png)' : ''}
+    location ~* \\.m3u8$ {
+${optionsPreflight}
         types { }
         default_type application/vnd.apple.mpegurl;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-        add_header Access-Control-Allow-Origin "*";
+${m3u8SubFilter}
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+${cors}
 ${secureLink}    }`;
 
     const config = `server {
@@ -1107,7 +1121,6 @@ ${m3u8Block}
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.send(config);
 });
-
 router.get('/servers/add', requireAdmin, (req, res) => {
     res.render('admin/server-form', { title: 'Thêm Server', server: null, error: null, success: null });
 });
