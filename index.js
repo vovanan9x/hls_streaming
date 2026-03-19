@@ -215,10 +215,9 @@ apiRouter.post('/upload/url', (req, res) => {
         const { encodeQueue } = require('./services/queue');
         const q = normalizeQualities(qualities);
         const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM videos').get().m;
-        const idahVal = idah ? String(idah).trim() || null : null;
         // Lưu url vào video_file để dedup về sau
-        const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order,idah) VALUES (?,?,?,?,?,'queued',?,?,?,?)`);
-        const row = ins.run(title, description || '', url, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1, idahVal);
+        const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order) VALUES (?,?,?,?,?,'queued',?,?,?)`);
+        const row = ins.run(title, description || '', url, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
         const videoId = row.lastInsertRowid;
         encodeQueue.push({ videoId, videoFilePath: null, videoFileName: null, autoThumb: true, qualities: q, sourceUrl: url });
         res.json({ ok: true, video_id: videoId, status: 'queued', message: 'Video đã được thêm vào hàng đợi xử lý.' });
@@ -257,10 +256,9 @@ apiRouter.post('/upload/drive', (req, res) => {
         const { encodeQueue } = require('./services/queue');
         const q = normalizeQualities(qualities);
         const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM videos').get().m;
-        const idahVal = idah ? String(idah).trim() || null : null;
         // Lưu sourceUrl vào video_file để dedup về sau
-        const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order,idah) VALUES (?,?,?,?,?,'queued',?,?,?,?)`);
-        const row = ins.run(title, description || '', sourceUrl, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1, idahVal);
+        const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order) VALUES (?,?,?,?,?,'queued',?,?,?)`);
+        const row = ins.run(title, description || '', sourceUrl, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
         const videoId = row.lastInsertRowid;
         encodeQueue.push({ videoId, videoFilePath: null, videoFileName: null, autoThumb: true, qualities: q, sourceUrl });
         res.json({ ok: true, video_id: videoId, status: 'queued', message: 'Video từ Google Drive đã được thêm vào hàng đợi.' });
