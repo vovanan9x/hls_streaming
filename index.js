@@ -200,10 +200,22 @@ apiRouter.post('/upload/url', (req, res) => {
     const { url, title, description, server_id, qualities, visibility } = req.body;
     if (!url) return res.status(400).json({ error: 'Thiếu tham số: url' });
     if (!title) return res.status(400).json({ error: 'Thiếu tham số: title' });
-    if (!server_id) return res.status(400).json({ error: 'Thiếu tham số: server_id' });
-
-    const server = db.prepare('SELECT id FROM servers WHERE id=? AND is_active=1').get(server_id);
-    if (!server) return res.status(400).json({ error: 'server_id không hợp lệ' });
+    // Auto-select server nếu không có server_id: chọn server active có ít video nhất
+    let resolvedServerId = server_id;
+    if (!resolvedServerId) {
+        const auto = db.prepare(`
+            SELECT s.id FROM servers s
+            LEFT JOIN videos v ON v.server_id = s.id
+            WHERE s.is_active = 1
+            GROUP BY s.id
+            ORDER BY COUNT(v.id) ASC
+            LIMIT 1`).get();
+        if (!auto) return res.status(400).json({ error: 'Không có server nào active' });
+        resolvedServerId = auto.id;
+    } else {
+        const server = db.prepare('SELECT id FROM servers WHERE id=? AND is_active=1').get(resolvedServerId);
+        if (!server) return res.status(400).json({ error: 'server_id không hợp lệ' });
+    }
 
     // Dedup: nếu URL đã tồn tại thì trả về video cũ
     const existing = db.prepare('SELECT id, status, m3u8_url, iframe_url FROM videos WHERE video_file=?').get(url);
@@ -217,10 +229,10 @@ apiRouter.post('/upload/url', (req, res) => {
         const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM videos').get().m;
         // Lưu url vào video_file để dedup về sau
         const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order) VALUES (?,?,?,?,?,'queued',?,?,?)`);
-        const row = ins.run(title, description || '', url, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
+        const row = ins.run(title, description || '', url, resolvedServerId, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
         const videoId = row.lastInsertRowid;
         encodeQueue.push({ videoId, videoFilePath: null, videoFileName: null, autoThumb: true, qualities: q, sourceUrl: url });
-        res.json({ ok: true, video_id: videoId, status: 'queued', message: 'Video đã được thêm vào hàng đợi xử lý.' });
+        res.json({ ok: true, video_id: videoId, server_id: resolvedServerId, status: 'queued', message: 'Video đã được thêm vào hàng đợi xử lý.' });
     } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
     }
@@ -233,10 +245,22 @@ apiRouter.post('/upload/drive', (req, res) => {
     const { drive_url, title, description, server_id, qualities, visibility } = req.body;
     if (!drive_url) return res.status(400).json({ error: 'Thiếu tham số: drive_url' });
     if (!title) return res.status(400).json({ error: 'Thiếu tham số: title' });
-    if (!server_id) return res.status(400).json({ error: 'Thiếu tham số: server_id' });
-
-    const server = db.prepare('SELECT id FROM servers WHERE id=? AND is_active=1').get(server_id);
-    if (!server) return res.status(400).json({ error: 'server_id không hợp lệ' });
+    // Auto-select server nếu không có server_id
+    let resolvedServerId = server_id;
+    if (!resolvedServerId) {
+        const auto = db.prepare(`
+            SELECT s.id FROM servers s
+            LEFT JOIN videos v ON v.server_id = s.id
+            WHERE s.is_active = 1
+            GROUP BY s.id
+            ORDER BY COUNT(v.id) ASC
+            LIMIT 1`).get();
+        if (!auto) return res.status(400).json({ error: 'Không có server nào active' });
+        resolvedServerId = auto.id;
+    } else {
+        const server = db.prepare('SELECT id FROM servers WHERE id=? AND is_active=1').get(resolvedServerId);
+        if (!server) return res.status(400).json({ error: 'server_id không hợp lệ' });
+    }
 
     // Validate và extract Drive file ID
     const driveMatch = drive_url.match(/(?:\/d\/|id=)([a-zA-Z0-9_-]{25,})/);
@@ -258,10 +282,10 @@ apiRouter.post('/upload/drive', (req, res) => {
         const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM videos').get().m;
         // Lưu sourceUrl vào video_file để dedup về sau
         const ins = db.prepare(`INSERT INTO videos (title,description,video_file,server_id,uploaded_by,status,qualities,visibility,sort_order) VALUES (?,?,?,?,?,'queued',?,?,?)`);
-        const row = ins.run(title, description || '', sourceUrl, server_id, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
+        const row = ins.run(title, description || '', sourceUrl, resolvedServerId, req.apiUser.id, JSON.stringify(q), visibility || 'public', maxOrder + 1);
         const videoId = row.lastInsertRowid;
         encodeQueue.push({ videoId, videoFilePath: null, videoFileName: null, autoThumb: true, qualities: q, sourceUrl });
-        res.json({ ok: true, video_id: videoId, status: 'queued', message: 'Video từ Google Drive đã được thêm vào hàng đợi.' });
+        res.json({ ok: true, video_id: videoId, server_id: resolvedServerId, status: 'queued', message: 'Video từ Google Drive đã được thêm vào hàng đợi.' });
     } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
     }

@@ -680,6 +680,48 @@ router.post('/videos/:id/delete', requireAdmin, async (req, res) => {
     res.redirect('/admin/videos');
 });
 
+// POST /admin/videos/bulk-delete — Admin xoa nhieu video cung luc
+router.post('/videos/bulk-delete', requireAdmin, async (req, res) => {
+    const db = getDb();
+    const { ids } = req.body;
+    if (!ids || !ids.length) return res.json({ ok: false, error: 'Khong co video nao duoc chon' });
+
+    const valid = ids.map(Number).filter(Boolean);
+    let deleted = 0;
+
+    for (const id of valid) {
+        const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+        if (!video) continue;
+
+        if (video.server_id) {
+            purgeVideoCache(video.id, video.server_id).catch(() => {});
+            const serverInfo = db.prepare('SELECT * FROM servers WHERE id = ?').get(video.server_id);
+            if (serverInfo) {
+                deleteVideoFromStorage(serverInfo, video.id).catch(e =>
+                    console.error(`[BulkDelete] SFTP delete failed videoId=${id}:`, e.message)
+                );
+            }
+        }
+
+        const hlsDir = path.join(__dirname, '..', 'storage', 'hls', id.toString());
+        if (fs.existsSync(hlsDir)) fs.rmSync(hlsDir, { recursive: true, force: true });
+
+        if (video.video_file) {
+            const vp = path.join(UPLOAD_DIR, video.video_file);
+            if (fs.existsSync(vp)) { try { fs.unlinkSync(vp); } catch (e) {} }
+        }
+        if (video.thumbnail && !video.thumbnail.startsWith('http')) {
+            const tp = path.join(THUMB_DIR, video.thumbnail);
+            if (fs.existsSync(tp)) { try { fs.unlinkSync(tp); } catch (e) {} }
+        }
+
+        db.prepare('DELETE FROM videos WHERE id = ?').run(id);
+        deleted++;
+    }
+
+    console.log(`[BulkDelete] Deleted ${deleted}/${valid.length} videos`);
+    res.json({ ok: true, deleted });
+});
 // POST /admin/api/videos/:id/purge-cache - Purge CF cache thủ công
 router.post('/api/videos/:id/purge-cache', requireAdmin, async (req, res) => {
     const db = getDb();
