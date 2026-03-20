@@ -97,8 +97,17 @@ class EncodeQueue extends EventEmitter {
      * gọi _next() cùng lúc.
      */
     async _next() {
-        if (this._dispatching) return; // đang trong _next() rồi
+        if (this._dispatching) return; // mutex: đang trong _next() rồi
         if (this.queue.length === 0) return;
+
+        // Early exit: nếu tất cả worker slots đã đầy → không cần dispatch thêm
+        // markRemoteDone() sẽ gọi _next() lại khi có slot trống
+        const { getWorkers } = require('./workerPool');
+        const maxConcurrent = Math.max(1, getWorkers().length);
+        if (this.remoteJobs.size >= maxConcurrent && !this.localRunning) {
+            console.log(`[Queue] _next() skipped: all ${maxConcurrent} slots busy (remoteJobs=${this.remoteJobs.size})`);
+            return;
+        }
 
         this._dispatching = true;
         try {
