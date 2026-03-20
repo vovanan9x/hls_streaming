@@ -244,8 +244,30 @@
     @media (max-width: 480px) {
       #vp-vol-wrap { display: none; }
       #vp-quality { display: none; }
+      #vp-speed { display: none; }
       [data-tip]::after { display: none; }
+      /* Buttons lớn hơn để dễ bấm trên mobile */
+      .vp-btn { padding: 11px; }
+      #vp-btn-row { gap: 2px; }
     }
+    /* Speed selector — cùng style với quality */
+    #vp-speed {
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+      color: var(--text); border-radius: 6px; font-size: 12px; font-weight: 500;
+      padding: 4px 8px; cursor: pointer; outline: none;
+      font-family: inherit;
+    }
+    #vp-speed option { background: #1e293b; }
+    /* Swipe volume overlay feedback */
+    #vp-swipe-vol {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+      background: var(--glass); backdrop-filter: blur(8px);
+      color: #fff; padding: 10px 20px; border-radius: 24px;
+      font-size: 15px; font-weight: 600; pointer-events: none;
+      z-index: 40; opacity: 0; transition: opacity .2s;
+      white-space: nowrap;
+    }
+    #vp-swipe-vol.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -272,6 +294,9 @@
   <!-- Skip ripples -->
   <div class="skip-ripple left"  id="rpl-back">◀◀ 10s</div>
   <div class="skip-ripple right" id="rpl-fwd">10s ▶▶</div>
+
+  <!-- Swipe volume feedback (mobile) -->
+  <div id="vp-swipe-vol"></div>
 
   <!-- Screenshot flash -->
   <div id="vp-flash"></div>
@@ -348,9 +373,24 @@
         <option value="-1">Auto</option>
       </select>
 
+      <!-- Speed -->
+      <select id="vp-speed" data-tip="Tốc độ">
+        <option value="0.5">0.5×</option>
+        <option value="0.75">0.75×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+        <option value="2">2×</option>
+      </select>
+
       <!-- Screenshot -->
       <button class="vp-btn accent" id="btn-shot" data-tip="Chụp ảnh (S)">
         <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </button>
+
+      <!-- Picture-in-Picture -->
+      <button class="vp-btn" id="btn-pip" data-tip="Picture-in-Picture" style="display:none">
+        <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2"/><rect x="12" y="11" width="8" height="5" rx="1" fill="currentColor" stroke="none"/></svg>
       </button>
 
       <!-- Fullscreen -->
@@ -410,6 +450,9 @@
   const rplBack   = document.getElementById('rpl-back');
   const rplFwd    = document.getElementById('rpl-fwd');
   const spinner   = document.getElementById('vp-spinner');
+  const speed     = document.getElementById('vp-speed');
+  const btnPip    = document.getElementById('btn-pip');
+  const swipeVol  = document.getElementById('vp-swipe-vol');
 
   // ── Buffering spinner ─────────────────────────────────────
   function showSpinner() { spinner && spinner.classList.add('show'); }
@@ -615,6 +658,16 @@
   });
 
   // ── Volume ────────────────────────────────────────────────
+  var LS_VOL = 'hls_vol';
+  // Khôi phục âm lượng đã lưu
+  (function () {
+    var sv = parseFloat(localStorage.getItem(LS_VOL));
+    if (!isNaN(sv) && sv >= 0 && sv <= 1) {
+      video.volume = sv;
+      if (volSlider) volSlider.value = sv;
+    }
+  })();
+
   function updateVolUI() {
     var muted = video.muted || video.volume === 0;
     icoVol.style.display   = muted ? 'none' : '';
@@ -623,6 +676,7 @@
   volSlider && volSlider.addEventListener('input', function () {
     video.volume = parseFloat(this.value);
     video.muted  = (video.volume === 0);
+    localStorage.setItem(LS_VOL, video.volume);
     updateVolUI();
   });
   btnMute && btnMute.addEventListener('click', function () {
@@ -630,6 +684,32 @@
     if (volSlider) volSlider.value = video.muted ? 0 : video.volume;
     updateVolUI();
   });
+
+  // ── Speed control ─────────────────────────────────────────
+  var LS_SPEED = 'hls_speed';
+  (function () {
+    var ss = parseFloat(localStorage.getItem(LS_SPEED));
+    if (!isNaN(ss) && ss > 0) {
+      video.playbackRate = ss;
+      if (speed) speed.value = String(ss);
+    }
+  })();
+  speed && speed.addEventListener('change', function () {
+    video.playbackRate = parseFloat(this.value);
+    localStorage.setItem(LS_SPEED, this.value);
+  });
+
+  // ── Picture-in-Picture ────────────────────────────────────
+  if (document.pictureInPictureEnabled && btnPip) {
+    btnPip.style.display = '';
+    btnPip.addEventListener('click', function () {
+      if (document.pictureInPictureElement) {
+        document.exitPictureInPicture();
+      } else {
+        video.requestPictureInPicture().catch(function () {});
+      }
+    });
+  }
 
   // ── Screenshot ────────────────────────────────────────────
   function showToast(msg, dur) {
@@ -695,11 +775,30 @@
 
   btnFs && btnFs.addEventListener('click', function () {
     if (isFs()) {
-      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
     } else {
-      var el = wrap;
-      (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen).call(el);
+      // iOS Safari: requestFullscreen() không hoạt động trên <div>
+      // Phải dùng webkitEnterFullscreen() trực tiếp trên <video>
+      if (video.webkitEnterFullscreen) {
+        video.webkitEnterFullscreen();
+      } else {
+        var el = wrap;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        else if (el.mozRequestFullScreen) el.mozRequestFullScreen();
+      }
     }
+  });
+
+  // iOS: lắng nghe sự kiện fullscreen riêng của video element
+  video.addEventListener('webkitbeginfullscreen', function () {
+    icoFs.style.display    = 'none';
+    icoExitFs.style.display = '';
+  });
+  video.addEventListener('webkitendfullscreen', function () {
+    icoFs.style.display    = '';
+    icoExitFs.style.display = 'none';
   });
 
   // ── Auto-hide controls ────────────────────────────────────
@@ -734,13 +833,71 @@
       case ' ': case 'k': e.preventDefault(); togglePlay(); break;
       case 'ArrowRight': e.preventDefault(); video.currentTime += 10; showRipple(rplFwd); break;
       case 'ArrowLeft':  e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - 10); showRipple(rplBack); break;
-      case 'ArrowUp':    e.preventDefault(); video.volume = Math.min(1, video.volume + 0.1); if (volSlider) volSlider.value = video.volume; break;
-      case 'ArrowDown':  e.preventDefault(); video.volume = Math.max(0, video.volume - 0.1); if (volSlider) volSlider.value = video.volume; break;
+      case 'ArrowUp':    e.preventDefault(); video.volume = Math.min(1, video.volume + 0.1); if (volSlider) volSlider.value = video.volume; localStorage.setItem(LS_VOL, video.volume); updateVolUI(); break;
+      case 'ArrowDown':  e.preventDefault(); video.volume = Math.max(0, video.volume - 0.1); if (volSlider) volSlider.value = video.volume; localStorage.setItem(LS_VOL, video.volume); updateVolUI(); break;
       case 'f': case 'F': e.preventDefault(); btnFs && btnFs.click(); break;
       case 'm': case 'M': e.preventDefault(); btnMute && btnMute.click(); break;
       case 's': case 'S': e.preventDefault(); btnShot && btnShot.click(); break;
+      case 'p': case 'P': e.preventDefault(); btnPip && btnPip.click(); break;
     }
   });
+
+  // ── Mobile swipe gestures ─────────────────────────────────
+  // Swipe ngang → seek, swipe dọc → volume
+  (function () {
+    var swTouchX, swTouchY, swDir, swVolStart, swTimer;
+    var THRESH = 10; // px tối thiểu để xác định hướng vuốt
+
+    function showSwipeVol(v) {
+      if (!swipeVol) return;
+      var pct = Math.round(v * 100);
+      var icon = v === 0 ? '🔇' : (v < 0.5 ? '🔉' : '🔊');
+      swipeVol.textContent = icon + ' ' + pct + '%';
+      swipeVol.classList.add('show');
+      clearTimeout(swTimer);
+      swTimer = setTimeout(function () { swipeVol.classList.remove('show'); }, 800);
+    }
+
+    wrap.addEventListener('touchstart', function (e) {
+      // Bỏ qua nếu chạm vào controls bar
+      if (e.target.closest && e.target.closest('#vp-controls')) return;
+      // Bỏ qua nếu 2 ngón (pinch)
+      if (e.touches.length > 1) return;
+      swTouchX = e.touches[0].clientX;
+      swTouchY = e.touches[0].clientY;
+      swDir = null;
+      swVolStart = video.volume;
+    }, { passive: true });
+
+    wrap.addEventListener('touchmove', function (e) {
+      if (e.touches.length > 1 || swTouchX === undefined) return;
+      if (e.target.closest && e.target.closest('#vp-controls')) return;
+
+      var dx = e.touches[0].clientX - swTouchX;
+      var dy = e.touches[0].clientY - swTouchY;
+
+      // Xác định hướng vuốt lần đầu
+      if (!swDir) {
+        if (Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
+        swDir = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      }
+
+      if (swDir === 'v') {
+        // Swipe dọc → điều chỉnh âm lượng
+        e.preventDefault();
+        var delta = -(dy / wrap.clientHeight) * 1.5; // 1.5× sensitivity
+        var newVol = Math.max(0, Math.min(1, swVolStart + delta));
+        video.volume = newVol;
+        video.muted = (newVol === 0);
+        if (volSlider) volSlider.value = newVol;
+        localStorage.setItem(LS_VOL, newVol);
+        updateVolUI();
+        showSwipeVol(newVol);
+      }
+      // Swipe ngang để seek được handle bởi double-tap ở trên
+    }, { passive: false });
+  })();
+
 
 })();
 </script>

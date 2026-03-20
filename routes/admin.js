@@ -312,16 +312,15 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
 
         // ── Thử dispatch sang encode worker trước ──
         try {
-            // Build set URLs của workers đã có job đang chạy trong remoteJobs
-            // → findIdleWorker sẽ skip chúng, tránh 2 jobs vào cùng 1 worker
             const { encodeQueue } = require('../services/queue');
-            const busyUrls = new Set(
-                [...encodeQueue.remoteJobs.values()]
-                    .map(j => j.worker?.url)
-                    .filter(Boolean)
-            );
-            const worker = await workerPool.findIdleWorker(busyUrls);
+
+            // Dùng activeWorkerUrls (synchronous) để skip workers đã có job
+            const worker = await workerPool.findIdleWorker(encodeQueue.activeWorkerUrls);
             if (worker) {
+                // CLAIM SLOT NGAY LẬP TỨC (synchronous) — trước khi gọi HTTP
+                // Đây là guard chính, đảm bảo không bao giờ dispatch 2 jobs vào cùng 1 worker
+                encodeQueue.claimWorkerSlot(worker.url, videoId, worker);
+
                 let ok = false;
 
                 // Ưu tiên dispatch URL (nhanh hơn, worker tự download)
@@ -347,37 +346,32 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
                 }
 
                 if (ok) {
-                    // Worker nhận rồi — nó sẽ encode + SFTP + callback về /api/worker/done
-                    const { encodeQueue } = require('../services/queue');
-                    encodeQueue.remoteJobs.set(videoId, { worker, job: { videoId }, dispatchedAt: new Date() });
-                    console.log(`[Process] Video ${videoId} dispatched to worker ${worker.label}, waiting for callback...`);
+                    console.log(`[Process] Video ${videoId} dispatched to worker ${worker.label} ✓`);
 
-                    // Timeout: nếu sau 45 phút không có callback → mark failed + re-add to queue
+                    // Timeout: nếu sau 45 phút không có callback → mark failed
                     const WORKER_TIMEOUT_MS = 45 * 60 * 1000;
                     const timeoutHandle = setTimeout(async () => {
-                        const { encodeQueue } = require('../services/queue');
-                        if (!encodeQueue.remoteJobs.has(videoId)) return; // callback đã đến
-                        encodeQueue.remoteJobs.delete(videoId);
+                        const { encodeQueue: eq } = require('../services/queue');
+                        if (!eq.remoteJobs.has(videoId)) return;
+                        eq.markRemoteDone(videoId); // giải phóng slot
                         const db2 = getDb();
                         const stillProcessing = db2.prepare("SELECT status FROM videos WHERE id=?").get(videoId);
                         if (stillProcessing && stillProcessing.status === 'processing') {
                             db2.prepare("UPDATE videos SET status='error', progress=0 WHERE id=?").run(videoId);
-                            console.error(`[Timeout] Worker ${worker.label} không callback sau 45p cho videoId=${videoId} → marked error`);
+                            console.error(`[Timeout] Worker ${worker.label} không callback sau 45p cho videoId=${videoId} → error`);
                         }
                     }, WORKER_TIMEOUT_MS);
-                    // Lưu timeout handle để cancel khi callback đến
                     encodeQueue.remoteJobs.get(videoId).timeoutHandle = timeoutHandle;
 
-                    // Xóa file local nếu dùng URL dispatch (file đã download không cần giữ)
+                    // Xóa file local nếu dùng URL dispatch
                     if (sourceUrl && videoFilePath && fs.existsSync(videoFilePath)) {
-                        try {
-                            fs.unlinkSync(videoFilePath);
-                            console.log(`[Cleanup] Deleted local file (worker will download from URL): ${videoFilePath}`);
-                        } catch (e) { /* ignore */ }
+                        try { fs.unlinkSync(videoFilePath); } catch (e) { /* ignore */ }
                     }
                     return;
                 } else {
-                    // Dispatch failed - giữ queued, worker poller sẽ re-dispatch
+                    // Dispatch thất bại → giải phóng slot đã claim
+                    encodeQueue.markRemoteDone(videoId);
+
                     console.warn(`[Process] Worker dispatch thất bại cho videoId=${videoId}, chờ worker poller...`);
                     db.prepare("UPDATE videos SET status='queued', progress=0 WHERE id=?").run(videoId);
                     return;
