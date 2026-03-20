@@ -50,12 +50,12 @@ fs.mkdirSync(TMP_DIR, { recursive: true });
 // hd: giữ nguyên độ phân giải gốc 100%
 const QUALITY_PRESETS = {
     'sd': { scaleFactor: 0.7, crf: 23, audioBitrate: '128k', bandwidth: 2176000, scaleDown: 'percent' },
-    'hd': { crf: 18, audioBitrate: '192k', bandwidth: 8000000, scaleDown: false },
+    'hd': { crf: 23, audioBitrate: '128k', bandwidth: 5000000, scaleDown: false },
     // Legacy presets (backwards compat)
     '360p': { width: 640, height: 360, videoBitrate: '800k', audioBitrate: '96k', bandwidth: 896000, scaleDown: 'fixed' },
     '480p': { width: 854, height: 480, videoBitrate: '1400k', audioBitrate: '128k', bandwidth: 1536000, scaleDown: 'fixed' },
     '720p': { width: 1280, height: 720, videoBitrate: '2800k', audioBitrate: '128k', bandwidth: 2944000, scaleDown: 'fixed' },
-    '1080p': { width: 1920, height: 1080, videoBitrate: '5000k', audioBitrate: '192k', bandwidth: 5248000, scaleDown: 'fixed' },
+    '1080p': { width: 1920, height: 1080, videoBitrate: '5000k', audioBitrate: '128k', bandwidth: 5248000, scaleDown: 'fixed' },
 };
 
 // ====== State ======
@@ -330,7 +330,7 @@ function encodeQuality(inputPath, outputDir, preset, qualityName, totalDur, onPr
             `-b:a ${preset.audioBitrate}`,
             '-codec:v libx264',
             '-codec:a aac',
-            '-preset fast',
+            '-preset medium',
             '-profile:v high',
             '-level 4.1',
             '-pix_fmt yuv420p',
