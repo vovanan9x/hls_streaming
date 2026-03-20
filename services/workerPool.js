@@ -42,10 +42,14 @@ async function pingWorker(worker) {
     }
 }
 
-/** Tìm worker rảnh đầu tiên */
-async function findIdleWorker() {
+/** Tìm worker rảnh đầu tiên, bỏ qua các workers đã có job trong remoteJobs
+ * @param {Set<string>} [busyUrls] - Set URL của workers đã có job đang chạy
+ */
+async function findIdleWorker(busyUrls = new Set()) {
     const workers = getWorkers();
     for (const w of workers) {
+        // Bỏ qua worker đã được assign job (chưa kịp update busy status qua HTTP)
+        if (busyUrls.has(w.url)) continue;
         const status = await pingWorker(w);
         if (status.reachable && !status.busy) {
             return w;

@@ -312,7 +312,15 @@ async function processVideo(videoId, videoFilePath, videoFileName, autoThumb = t
 
         // ── Thử dispatch sang encode worker trước ──
         try {
-            const worker = await workerPool.findIdleWorker();
+            // Build set URLs của workers đã có job đang chạy trong remoteJobs
+            // → findIdleWorker sẽ skip chúng, tránh 2 jobs vào cùng 1 worker
+            const { encodeQueue } = require('../services/queue');
+            const busyUrls = new Set(
+                [...encodeQueue.remoteJobs.values()]
+                    .map(j => j.worker?.url)
+                    .filter(Boolean)
+            );
+            const worker = await workerPool.findIdleWorker(busyUrls);
             if (worker) {
                 let ok = false;
 
