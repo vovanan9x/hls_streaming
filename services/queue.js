@@ -109,6 +109,11 @@ class EncodeQueue extends EventEmitter {
     }
 
     async _drainQueue() {
+        // Số workers tối đa = số workers đã cấu hình
+        // Mỗi worker chỉ được nhận 1 job tại 1 thời điểm
+        const { getWorkers } = require('./workerPool');
+        const maxConcurrent = Math.max(1, getWorkers().length);
+
         while (this.queue.length > 0) {
             const job = this.queue[0]; // peek, chưa shift
 
@@ -118,12 +123,18 @@ class EncodeQueue extends EventEmitter {
                 continue;
             }
 
+            // Dừng nếu tất cả worker slots đã đầy
+            if (this.remoteJobs.size >= maxConcurrent) {
+                console.log(`[Queue] All ${maxConcurrent} worker slots full (remoteActive=${this.remoteJobs.size}), waiting for callback...`);
+                break;
+            }
+
             // Local encode: chỉ 1 job tại 1 lúc
             if (this.localRunning) break;
 
             this.queue.shift(); // lấy ra khỏi queue
             this.emit('start', job.videoId);
-            console.log(`[Queue] Processing videoId=${job.videoId} | queue=${this.queue.length} | remoteActive=${this.remoteJobs.size}`);
+            console.log(`[Queue] Processing videoId=${job.videoId} | queue=${this.queue.length} | remoteActive=${this.remoteJobs.size}/${maxConcurrent}`);
 
             try {
                 await this._processVideo(
@@ -132,11 +143,14 @@ class EncodeQueue extends EventEmitter {
                 );
 
                 if (this.remoteJobs.has(job.videoId)) {
-                    // Dispatched sang remote worker → không block, tiếp tục drain
-                    // Slot sẽ được giải phóng khi markRemoteDone() được gọi
-                    console.log(`[Queue] videoId=${job.videoId} dispatched to remote | active=${this.remoteJobs.size}`);
-                    // Tiếp tục loop để dispatch job tiếp vào worker khác nếu còn rảnh
-                    continue;
+                    // Dispatched sang remote worker
+                    console.log(`[Queue] videoId=${job.videoId} dispatched to remote | active=${this.remoteJobs.size}/${maxConcurrent}`);
+                    // Chỉ tiếp tục nếu còn slot trống (< maxConcurrent)
+                    if (this.remoteJobs.size < maxConcurrent) {
+                        continue; // còn slot → dispatch tiếp cho worker khác
+                    } else {
+                        break; // đủ rồi → chờ markRemoteDone()
+                    }
                 } else {
                     // Local encode xong
                     this.emit('done', job.videoId);
@@ -154,11 +168,11 @@ class EncodeQueue extends EventEmitter {
                 }
             }
 
-            // Sau local encode → chỉ encode 1 local job rồi break
-            // (sẽ resume khi local xong)
+            // Sau local encode → break (resume khi local xong)
             break;
         }
     }
+
 
     setProcessor(fn) {
         this._processVideo = fn;
