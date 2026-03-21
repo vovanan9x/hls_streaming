@@ -414,7 +414,7 @@
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d.ok) { showToast('success', 'Đã thêm vào hàng đợi retry!'); setTimeout(function() { location.reload(); }, 1500); }
-          else { showToast('error', d.error || 'Thất bại'); btn.disabled = false; }
+          else { showToast('error', d.message || 'Thất bại'); btn.disabled = false; }
         })
         .catch(function () { showToast('error', 'Lỗi kết nối'); btn.disabled = false; });
     });

@@ -245,9 +245,9 @@ router.post('/upload', requireUploader, (req, res) => {
             console.log(`[Upload] Final qualities: ${qualitiesJson}`);
 
             const result = db.prepare(`
-        INSERT INTO videos (title, description, video_file, server_id, uploaded_by, status, qualities, visibility, sort_order)
-        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)
-      `).run(title.trim(), description || '', videoFileName, resolvedServerId, req.session.user.id, qualitiesJson, req.body.visibility || 'public', maxOrder.max_order + 1);
+        INSERT INTO videos (title, description, video_file, server_id, uploaded_by, status, qualities, visibility, sort_order, source_url)
+        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)
+      `).run(title.trim(), description || '', videoFileName, resolvedServerId, req.session.user.id, qualitiesJson, req.body.visibility || 'public', maxOrder.max_order + 1, sourceUrl || null);
 
             const videoId = result.lastInsertRowid;
             // Pass sourceUrl for remote/gdrive so worker can download directly
@@ -977,11 +977,11 @@ router.post('/api/videos/:id/retry', requireAdmin, (req, res) => {
     db.prepare("UPDATE videos SET status='queued', progress=0, updated_at=datetime('now','localtime') WHERE id=?").run(video.id);
 
     const qualities = (() => { try { return JSON.parse(video.qualities || '["sd"]'); } catch { return ['sd']; } })();
-    const videoFilePath = path.join(UPLOAD_DIR, video.video_file || '');
     const { encodeQueue } = require('../services/queue');
 
-    if (video.video_file && fs.existsSync(videoFilePath)) {
-        // Re-enqueue locally
+    // Ưu tiên 1: file local còn tồn tại
+    const videoFilePath = path.join(UPLOAD_DIR, video.video_file || '');
+    if (video.video_file && !video.video_file.startsWith('http') && fs.existsSync(videoFilePath)) {
         encodeQueue.push({
             videoId: video.id,
             videoFilePath,
@@ -989,25 +989,26 @@ router.post('/api/videos/:id/retry', requireAdmin, (req, res) => {
             autoThumb: !video.thumbnail,
             qualities,
         });
-        console.log(`[Retry] Video ${video.id} re-queued locally`);
-    } else if (video.remote_url || video.gdrive_url) {
-        // Re-enqueue as remote download
-        const src = video.remote_url ? 'remote' : 'gdrive';
-        const srcUrl = video.remote_url || video.gdrive_url;
-        encodeQueue.push({
-            videoId: video.id,
-            videoFilePath: srcUrl,
-            videoFileName: srcUrl,
-            autoThumb: !video.thumbnail,
-            qualities,
-            source: src,
-        });
-        console.log(`[Retry] Video ${video.id} re-queued from ${src}`);
-    } else {
-        return res.json({ ok: false, message: 'Không tìm thấy file gốc để retry.' });
+        console.log(`[Retry] Video ${video.id} re-queued from local file`);
+        return res.json({ ok: true });
     }
 
-    res.json({ ok: true });
+    // Ưu tiên 2: source_url được lưu lúc upload (remote URL / gdrive)
+    const srcUrl = video.source_url || (video.video_file && video.video_file.startsWith('http') ? video.video_file : null);
+    if (srcUrl) {
+        encodeQueue.push({
+            videoId: video.id,
+            videoFilePath: null,
+            videoFileName: null,
+            autoThumb: !video.thumbnail,
+            qualities,
+            sourceUrl: srcUrl,
+        });
+        console.log(`[Retry] Video ${video.id} re-queued from sourceUrl: ${srcUrl}`);
+        return res.json({ ok: true });
+    }
+
+    return res.json({ ok: false, message: 'Không tìm thấy file gốc hoặc URL nguồn để retry. Vui lòng upload lại.' });
 });
 
 // POST /admin/api/videos/bulk-cancel — Cancel multiple processing videos

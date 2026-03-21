@@ -161,6 +161,8 @@ function initTables() {
     `ALTER TABLE servers ADD COLUMN use_png_camouflage INTEGER DEFAULT 1`,
     // 2-layer CDN: phân biệt cloudflare vs bunnycdn domain type
     `ALTER TABLE cdn_domains ADD COLUMN cdn_type TEXT DEFAULT 'cloudflare'`,
+    // source_url: lưu URL gốc khi upload remote/gdrive, dùng để retry
+    `ALTER TABLE videos ADD COLUMN source_url TEXT DEFAULT NULL`,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (e) { /* already exists */ }
