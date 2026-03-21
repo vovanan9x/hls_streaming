@@ -10,7 +10,7 @@ const { convertToHLS, generateThumbnail } = require('../services/ffmpeg');
 const { downloadRemoteFile, UPLOAD_DIR, THUMB_DIR } = require('../services/upload');
 const { requireAuth, requireAdmin, requireUploader } = require('../middleware/auth');
 const { uploadHlsToServer, deleteVideoFromStorage } = require('../services/sftp');
-const { getAllViewerCounts } = require('../services/viewers');
+const { getAllViewerCounts, getLiveStats } = require('../services/viewers');
 const { encodeQueue } = require('../services/queue');
 const workerPool = require('../services/workerPool');
 const { pickLeastLoadedServer, getServerStats } = require('../services/serverRouter');
@@ -576,6 +576,50 @@ router.get('/api/sftp-progress/:id', requireAuth, (req, res) => {
 
 
 // ── Process Monitor ────────────────────────────────────────────────────────────
+
+// ── Live Viewers Dashboard ──────────────────────────────────────────────────
+
+// Helper: build live viewer data (per server + top 10 video)
+function buildLiveViewerData(db) {
+    const viewerCounts = getAllViewerCounts(); // { videoId: count }
+    const activeVideoIds = Object.keys(viewerCounts).map(Number).filter(Boolean);
+
+    let videoRows = [];
+    if (activeVideoIds.length > 0) {
+        const ph = activeVideoIds.map(() => '?').join(',');
+        videoRows = db.prepare(`
+            SELECT v.id, v.title, v.server_id, s.label as server_label
+            FROM videos v LEFT JOIN servers s ON v.server_id = s.id
+            WHERE v.id IN (${ph})
+        `).all(...activeVideoIds);
+    }
+
+    const { serverCounts, top10 } = getLiveStats(videoRows);
+
+    const allServers = db.prepare(`
+        SELECT id, label, ip, status FROM servers WHERE is_active = 1 ORDER BY label
+    `).all();
+
+    const serverStats = allServers.map(s => ({
+        ...s, viewers: serverCounts[String(s.id)] || 0
+    })).sort((a, b) => b.viewers - a.viewers);
+
+    const totalLive = Object.values(serverCounts).reduce((s, c) => s + c, 0);
+    return { serverStats, top10, totalLive };
+}
+
+// GET /admin/live-viewers — Render dashboard page
+router.get('/live-viewers', requireAdmin, (req, res) => {
+    const data = buildLiveViewerData(getDb());
+    res.render('admin/live-viewers', { title: 'Live Viewers', ...data });
+});
+
+// GET /admin/api/live-viewers — JSON endpoint cho auto-refresh
+router.get('/api/live-viewers', requireAdmin, (req, res) => {
+    const data = buildLiveViewerData(getDb());
+    res.json({ ...data, ts: Date.now() });
+});
+
 
 // GET /admin/processes — Render process monitor page
 router.get('/processes', requireAdmin, (req, res) => {

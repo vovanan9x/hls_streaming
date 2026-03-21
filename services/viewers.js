@@ -65,7 +65,44 @@ function getAllViewerCounts() {
     return result;
 }
 
+/**
+ * Tổng hợp live stats: viewer per server + top 10 videos — 1 lần duyệt Map
+ * @param {Array} videoRows - [{id, title, server_id, server_label}] từ DB (chỉ video đang có viewer)
+ * @returns {{ serverCounts: Object, top10: Array }}
+ */
+function getLiveStats(videoRows) {
+    cleanExpired();
+
+    // Build lookup: videoId (string) -> meta
+    const videoMeta = new Map();
+    for (const v of videoRows) {
+        videoMeta.set(String(v.id), v);
+    }
+
+    const serverCounts = {};
+    const videoList = [];
+
+    for (const [videoId, sessions] of viewers.entries()) {
+        if (sessions.size === 0) continue;
+        const meta = videoMeta.get(videoId);
+        if (!meta || !meta.server_id) continue;
+
+        const sid = String(meta.server_id);
+        serverCounts[sid] = (serverCounts[sid] || 0) + sessions.size;
+        videoList.push({
+            videoId,
+            title: meta.title,
+            serverId: sid,
+            serverLabel: meta.server_label || '—',
+            count: sessions.size
+        });
+    }
+
+    videoList.sort((a, b) => b.count - a.count);
+    return { serverCounts, top10: videoList.slice(0, 10) };
+}
+
 // Chạy cleanup mỗi 30 giây
 setInterval(cleanExpired, 30000);
 
-module.exports = { pingViewer, getViewerCount, getAllViewerCounts };
+module.exports = { pingViewer, getViewerCount, getAllViewerCounts, getLiveStats };

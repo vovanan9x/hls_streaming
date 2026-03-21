@@ -1,0 +1,272 @@
+<%- include('../partials/header') %>
+
+<style>
+    .live-badge {
+        display: inline-flex; align-items: center; gap: 6px;
+        background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.35);
+        color: #f87171; border-radius: 20px; padding: 3px 12px;
+        font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+    }
+    .live-dot {
+        width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
+        animation: livePulse 1.4s ease-in-out infinite;
+    }
+    @keyframes livePulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.4; transform: scale(0.7); }
+    }
+    .stat-grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px; margin-bottom: 24px;
+    }
+    .stat-card {
+        background: var(--card-bg, #1e293b); border: 1px solid var(--border, rgba(255,255,255,0.07));
+        border-radius: 12px; padding: 20px; text-align: center;
+    }
+    .stat-num { font-size: 36px; font-weight: 800; color: var(--accent, #8b5cf6); line-height: 1; }
+    .stat-label { font-size: 12px; color: var(--text-muted, #94a3b8); margin-top: 6px; }
+    .viewer-bar-wrap { height: 6px; background: rgba(255,255,255,0.07); border-radius: 3px; margin-top: 6px; }
+    .viewer-bar-fill { height: 6px; border-radius: 3px; background: linear-gradient(90deg, #8b5cf6, #6366f1); transition: width 0.5s ease; }
+    .top-bar-fill { background: linear-gradient(90deg, #06b6d4, #3b82f6); }
+    .server-row-active td { background: rgba(139,92,246,0.06); }
+    .viewer-count-badge {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-weight: 700; color: var(--accent, #8b5cf6); font-size: 15px;
+    }
+    .rank-medal { font-size: 17px; width: 24px; display: inline-block; text-align: center; }
+    .countdown-bar {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 12px; color: var(--text-muted, #94a3b8);
+        margin-bottom: 20px;
+    }
+    .countdown-bar progress {
+        flex: 1; height: 3px; border-radius: 3px;
+        accent-color: var(--accent, #8b5cf6);
+    }
+    .empty-state { text-align: center; padding: 32px 20px; color: var(--text-muted, #94a3b8); font-size: 14px; }
+    .server-status-dot {
+        display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+        margin-right: 6px; vertical-align: middle;
+    }
+    .dot-live { background: #22c55e; }
+    .dot-down { background: #ef4444; }
+    .dot-unknown { background: #94a3b8; }
+</style>
+
+<%# ── Header row ─────────────────────────────────── %>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+    <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+    <div class="countdown-bar" style="flex:1;min-width:180px;">
+        <progress id="refresh-progress" value="15" max="15"></progress>
+        <span id="refresh-label">Cập nhật sau <strong id="countdown-num">15</strong>s</span>
+    </div>
+    <button onclick="forceRefresh()" style="background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);color:#a78bfa;border-radius:8px;padding:5px 14px;cursor:pointer;font-size:13px;">⟳ Làm mới</button>
+</div>
+
+<%# ── Stat cards ─────────────────────────────────── %>
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-num" id="stat-total"><%= totalLive %></div>
+        <div class="stat-label">👁️ Tổng người đang xem</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num" style="color:#22c55e"><%= serverStats.filter(s=>s.viewers>0).length %></div>
+        <div class="stat-label">🖥️ Server có người xem</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num" style="color:#06b6d4"><%= top10.length %></div>
+        <div class="stat-label">🎬 Video đang phát trực tiếp</div>
+    </div>
+</div>
+
+<%# ── Server table ────────────────────────────────── %>
+<div class="card" style="margin-bottom:24px;">
+    <div class="card-title">🖥️ Thống kê theo Server</div>
+    <div style="margin-top:16px;">
+        <% if (serverStats.length === 0) { %>
+            <div class="empty-state">Chưa có server nào được cấu hình.</div>
+        <% } else { %>
+        <table class="table" id="server-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Server</th>
+                    <th>IP</th>
+                    <th>Trạng thái</th>
+                    <th style="text-align:right;">Đang xem</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% const maxServerViewers = serverStats[0] ? serverStats[0].viewers : 1; %>
+                <% serverStats.forEach(function(s, i) { %>
+                <tr class="<%= s.viewers > 0 ? 'server-row-active' : '' %>">
+                    <td style="color:var(--text-muted);width:36px;"><%= i+1 %></td>
+                    <td style="font-weight:600;"><%= s.label %></td>
+                    <td style="color:var(--text-muted);font-size:13px;font-family:monospace;"><%= s.ip %></td>
+                    <td>
+                        <span class="server-status-dot <%= s.status==='live' ? 'dot-live' : s.status==='down' ? 'dot-down' : 'dot-unknown' %>"></span>
+                        <%= s.status || 'unknown' %>
+                    </td>
+                    <td style="text-align:right;">
+                        <div class="viewer-count-badge">
+                            <% if (s.viewers > 0) { %>👁️<% } %>
+                            <span><%= s.viewers %></span>
+                        </div>
+                        <div class="viewer-bar-wrap" style="width:120px;margin-left:auto;">
+                            <div class="viewer-bar-fill" style="width:<%= maxServerViewers > 0 ? Math.round(s.viewers/maxServerViewers*100) : 0 %>%"></div>
+                        </div>
+                    </td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
+        <% } %>
+    </div>
+</div>
+
+<%# ── Top 10 videos ───────────────────────────────── %>
+<div class="card">
+    <div class="card-title">🏆 Top 10 Video đang được xem nhiều nhất</div>
+    <div style="margin-top:16px;" id="top10-wrap">
+        <% if (top10.length === 0) { %>
+            <div class="empty-state">Hiện không có ai đang xem video nào.</div>
+        <% } else { %>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="width:40px;">#</th>
+                    <th>Video</th>
+                    <th>Server</th>
+                    <th style="text-align:right;">Đang xem</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% const maxVideoViewers = top10[0] ? top10[0].count : 1; %>
+                <% top10.forEach(function(v, i) { %>
+                <tr>
+                    <td>
+                        <span class="rank-medal">
+                            <% if (i===0) { %>🥇<% } else if (i===1) { %>🥈<% } else if (i===2) { %>🥉<% } else { %><%= i+1 %><% } %>
+                        </span>
+                    </td>
+                    <td>
+                        <a href="/admin/videos" style="color:var(--text-primary);text-decoration:none;font-weight:500;">
+                            <%= v.title %>
+                        </a>
+                    </td>
+                    <td style="color:var(--text-muted);font-size:13px;"><%= v.serverLabel %></td>
+                    <td style="text-align:right;">
+                        <span style="color:#06b6d4;font-weight:700;">👁️ <%= v.count %></span>
+                        <div class="viewer-bar-wrap" style="width:100px;margin-left:auto;">
+                            <div class="viewer-bar-fill top-bar-fill" style="width:<%= maxVideoViewers > 0 ? Math.round(v.count/maxVideoViewers*100) : 0 %>%"></div>
+                        </div>
+                    </td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
+        <% } %>
+    </div>
+</div>
+
+<script>
+(function () {
+    const REFRESH_INTERVAL = 15; // giây
+    let remaining = REFRESH_INTERVAL;
+    const numEl   = document.getElementById('countdown-num');
+    const progEl  = document.getElementById('refresh-progress');
+
+    function updateCountdown() {
+        numEl.textContent = remaining;
+        progEl.value = remaining;
+    }
+
+    async function doRefresh() {
+        try {
+            const res = await fetch('/admin/api/live-viewers');
+            if (!res.ok) return;
+            const data = await res.json();
+            renderStats(data);
+        } catch (e) { /* silent fail */ }
+    }
+
+    function renderStats(data) {
+        // Stat cards
+        const totEl = document.getElementById('stat-total');
+        if (totEl) totEl.textContent = data.totalLive;
+
+        // Stat card 2: servers có viewer
+        const allCards = document.querySelectorAll('.stat-num');
+        if (allCards[1]) allCards[1].textContent = (data.serverStats || []).filter(s => s.viewers > 0).length;
+        if (allCards[2]) allCards[2].textContent = (data.top10 || []).length;
+
+        // Server table
+        const maxSv = data.serverStats && data.serverStats[0] ? data.serverStats[0].viewers : 1;
+        const sTbody = document.querySelector('#server-table tbody');
+        if (sTbody && data.serverStats) {
+            sTbody.innerHTML = data.serverStats.map((s, i) => `
+                <tr class="${s.viewers > 0 ? 'server-row-active' : ''}">
+                    <td style="color:var(--text-muted);width:36px;">${i+1}</td>
+                    <td style="font-weight:600;">${escHtml(s.label)}</td>
+                    <td style="color:var(--text-muted);font-size:13px;font-family:monospace;">${escHtml(s.ip)}</td>
+                    <td><span class="server-status-dot ${s.status==='live'?'dot-live':s.status==='down'?'dot-down':'dot-unknown'}"></span>${escHtml(s.status||'unknown')}</td>
+                    <td style="text-align:right;">
+                        <div class="viewer-count-badge">${s.viewers > 0 ? '👁️' : ''}<span>${s.viewers}</span></div>
+                        <div class="viewer-bar-wrap" style="width:120px;margin-left:auto;">
+                            <div class="viewer-bar-fill" style="width:${maxSv > 0 ? Math.round(s.viewers/maxSv*100) : 0}%"></div>
+                        </div>
+                    </td>
+                </tr>`).join('');
+        }
+
+        // Top 10
+        const top10Wrap = document.getElementById('top10-wrap');
+        if (top10Wrap) {
+            if (!data.top10 || data.top10.length === 0) {
+                top10Wrap.innerHTML = '<div class="empty-state">Hiện không có ai đang xem video nào.</div>';
+            } else {
+                const maxVv = data.top10[0].count || 1;
+                const medals = ['🥇','🥈','🥉'];
+                top10Wrap.innerHTML = `<table class="table"><thead><tr>
+                    <th style="width:40px;">#</th><th>Video</th><th>Server</th>
+                    <th style="text-align:right;">Đang xem</th></tr></thead><tbody>` +
+                    data.top10.map((v, i) => `<tr>
+                        <td><span class="rank-medal">${medals[i] || (i+1)}</span></td>
+                        <td><a href="/admin/videos" style="color:var(--text-primary);text-decoration:none;font-weight:500;">${escHtml(v.title)}</a></td>
+                        <td style="color:var(--text-muted);font-size:13px;">${escHtml(v.serverLabel)}</td>
+                        <td style="text-align:right;">
+                            <span style="color:#06b6d4;font-weight:700;">👁️ ${v.count}</span>
+                            <div class="viewer-bar-wrap" style="width:100px;margin-left:auto;">
+                                <div class="viewer-bar-fill top-bar-fill" style="width:${maxVv > 0 ? Math.round(v.count/maxVv*100) : 0}%"></div>
+                            </div>
+                        </td></tr>`).join('') +
+                    '</tbody></table>';
+            }
+        }
+    }
+
+    function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Countdown timer — mỗi 1 giây
+    setInterval(function () {
+        remaining--;
+        updateCountdown();
+        if (remaining <= 0) {
+            remaining = REFRESH_INTERVAL;
+            updateCountdown();
+            doRefresh();
+        }
+    }, 1000);
+
+    // Expose force refresh to button
+    window.forceRefresh = function () {
+        remaining = REFRESH_INTERVAL;
+        updateCountdown();
+        doRefresh();
+    };
+})();
+</script>
+
+<%- include('../partials/footer') %>
